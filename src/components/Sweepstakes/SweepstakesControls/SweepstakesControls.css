@@ -1,0 +1,183 @@
+.sweepstakes-controls {
+  background-color: #111111;
+  border-radius: 4px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  padding: 25px;
+  margin-bottom: 20px;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.sweepstakes-controls:hover {
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.sweepstakes-controls h2 {
+  margin-top: 0;
+  color: #ffffff;
+  margin-bottom: 15px;
+  font-size: 1.6rem;
+  position: relative;
+  padding-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
+.sweepstakes-controls h2:after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 50px;
+  height: 2px;
+  background-color: rgba(255, 255, 255, 0.5);
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 12px 15px;
+  background-color: #0a0a0a;
+  border-radius: 4px;
+  border: 1px solid #333333;
+}
+
+.status-label {
+  font-weight: 600;
+  margin-right: 10px;
+  color: #ffffff;
+}
+
+.status-value {
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 0.85rem;
+}
+
+.status-value.paid {
+  color: #2ecc71;
+  background-color: rgba(46, 204, 113, 0.2);
+  border: 1px solid rgba(46, 204, 113, 0.4);
+}
+
+.status-value.unpaid {
+  color: #e74c3c;
+  background-color: rgba(231, 76, 60, 0.2);
+  border: 1px solid rgba(231, 76, 60, 0.4);
+}
+
+.controls-buttons {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.register-button,
+.pull-button {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.register-button {
+  background-color: #ffffff;
+  color: #000000;
+}
+
+.register-button:hover:not(:disabled) {
+  background-color: #eeeeee;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.pull-button {
+  background: linear-gradient(135deg, #ffffff 0%, #dddddd 100%);
+  color: #000000;
+}
+
+.pull-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ffffff 0%, #cccccc 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.register-button:disabled,
+.pull-button:disabled {
+  background-color: #333333;
+  background-image: none;
+  color: #666666;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.error-message {
+  color: #ff5555;
+  background-color: rgba(255, 85, 85, 0.1);
+  padding: 12px 15px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+  font-size: 0.9rem;
+  border-left: 3px solid #ff5555;
+}
+
+.payment-info {
+  font-size: 0.9rem;
+  color: #aaaaaa;
+  line-height: 1.5;
+  padding: 12px 15px;
+  background-color: #0a0a0a;
+  border-radius: 4px;
+  border: 1px solid #333333;
+}
+
+/* Responsive styles */
+@media (max-width: 768px) {
+  .sweepstakes-controls {
+    padding: 20px 15px;
+  }
+  
+  .controls-buttons {
+    flex-direction: column;
+  }
+  
+  .register-button,
+  .pull-button {
+    width: 100%;
+  }
+}
+
+/* Animation */
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(255, 255, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+  }
+}
+
+.register-button:focus:not(:disabled),
+.pull-button:focus:not(:disabled) {
+  animation: pulse 1.5s infinite;
+}

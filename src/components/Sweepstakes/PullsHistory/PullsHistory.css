@@ -1,0 +1,223 @@
+.pulls-history {
+  background-color: #111111;
+  border-radius: 4px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  padding: 25px;
+  margin-bottom: 20px;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.pulls-history:hover {
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.pulls-history .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.pulls-history h2 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 1.6rem;
+  position: relative;
+  padding-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
+.pulls-history h2:after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 50px;
+  height: 2px;
+  background-color: rgba(255, 255, 255, 0.5);
+}
+
+.refresh-button {
+  background-color: #444444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.refresh-button:hover {
+  background-color: #555555;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.refresh-button:disabled {
+  background-color: #333333;
+  color: #666666;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.no-pulls-message {
+  padding: 20px;
+  text-align: center;
+  color: #aaaaaa;
+  font-style: italic;
+  border: 1px dashed #444444;
+  border-radius: 4px;
+  background-color: #0a0a0a;
+}
+
+.pulls-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  max-height: 600px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #444444 #0a0a0a;
+}
+
+.pulls-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.pulls-list::-webkit-scrollbar-track {
+  background: #0a0a0a;
+  border-radius: 3px;
+}
+
+.pulls-list::-webkit-scrollbar-thumb {
+  background-color: #444444;
+  border-radius: 3px;
+}
+
+.pull-item {
+  padding: 18px;
+  border: 1px solid #333333;
+  border-radius: 4px;
+  background-color: #0a0a0a;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.pull-item:hover {
+  border-color: #555555;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.pull-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(to bottom, #ffffff 0%, #666666 100%);
+}
+
+.pull-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+  color: #aaaaaa;
+  border-bottom: 1px solid #222222;
+  padding-bottom: 8px;
+}
+
+.pull-number {
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.pull-date {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+.pull-winner {
+  margin-bottom: 15px;
+  padding: 8px 12px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.pull-winner .winner-name {
+  font-weight: bold;
+  font-size: 1.1rem;
+  color: #ffffff;
+  margin-left: 8px;
+  letter-spacing: 0.5px;
+}
+
+.pull-details {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: #888888;
+  margin-top: 12px;
+}
+
+.label {
+  color: #aaaaaa;
+  margin-right: 5px;
+  font-weight: 600;
+}
+
+.pull-id .id {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.8rem;
+  color: #888888;
+  background-color: #0f0f0f;
+  padding: 3px 6px;
+  border-radius: 3px;
+  border: 1px solid #333333;
+}
+
+.entrants-count {
+  display: flex;
+  align-items: center;
+}
+
+/* Responsive styles */
+@media (max-width: 768px) {
+  .pulls-history {
+    padding: 20px 15px;
+  }
+  
+  .pull-details {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .pull-winner {
+    padding: 6px 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .pull-header {
+    flex-direction: column;
+    gap: 5px;
+  }
+  
+  .pulls-history h2 {
+    font-size: 1.4rem;
+  }
+}

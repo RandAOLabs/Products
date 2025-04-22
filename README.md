@@ -1,31 +1,69 @@
-# ArcAO Front End Template
+# Sweepstakes Application
 
-This template is part of [ArcAO Templates](https://github.com/orgs/ArcAOGaming/repositories?q=template%3Atrue+archived%3Afalse), designed to help you get your game idea up and running fast!
+A modular sweepstakes application that allows users to enter a list of names, register with payment, and randomly pull winners.
 
-<div align="center">
+## Features
 
-[![Live Demo](https://img.shields.io/badge/demo-live-green?style=for-the-badge)](https://frontendtemplate_game.ar.io/)
+- **Entrants Management**: Add, edit, and update a list of potential winners
+- **Payment Integration**: Register with payment to unlock pulling functionality
+- **Winner Selection**: Randomly select winners from the entrants list
+- **Pull History**: View a history of all past pulls and their winners
+- **Payment Status**: Track whether the user has registered with payment
 
-[View Live Demo](https://frontendtemplate_game.ar.io/) • [Development Guide](docs/development.md) • [Deployment Guide](docs/deployment.md)
+## Application Structure
 
-</div>
+The application follows a modular architecture to promote maintainability and scalability:
 
-A modern web application template built with:
-- [React](https://react.dev/) - A JavaScript library for building user interfaces
-- [TypeScript](https://www.typescriptlang.org/) - JavaScript with syntax for types
-- [Vite](https://vitejs.dev/) - Next Generation Frontend Tooling
-- [ArNS](https://ar.io/arns/) - The Permaweb Name System for permanent web deployment
+### Components
 
-This template provides a minimal setup to get started with React development and automated deployment to the permaweb through ArNS.
+- **EntrantsForm**: Manages the list of entrants with text input and updates
+- **SweepstakesControls**: Handles registration, payment, and winner selection
+- **PullsHistory**: Displays past pulls and their results
+- **Sweepstakes**: Main component that orchestrates the application flow
+
+### Context
+
+- **SweepstakesContext**: Provides state management and client operations across components
+
+## Technical Details
+
+The application uses:
+
+- React for the UI components
+- Context API for state management
+- ao-process-clients for interacting with the sweepstakes blockchain process
+- A responsive design that works well on desktop and mobile devices
 
 ## Getting Started
 
-For development setup instructions, please see our [Development Guide](docs/development.md).
+1. Install dependencies:
+   ```
+   npm install
+   ```
 
-## Deployment
+2. Start the development server:
+   ```
+   npm run dev
+   ```
 
-For deployment instructions, please see our [Deployment Guide](docs/deployment.md).
+3. Build for production:
+   ```
+   npm run build
+   ```
+
+4. Deploy to the permaweb:
+   ```
+   npm run deploy
+   ```
+
+## Extending the Application
+
+The modular design makes it easy to extend the application:
+
+1. Add new components in the `src/components/Sweepstakes/` directory
+2. Expand context functionality in `src/context/SweepstakesContext.tsx`
+3. Modify styles in the respective CSS files
 
 ## License
 
-See [LICENSE](LICENSE) for more information.
+See the LICENSE file for details.
