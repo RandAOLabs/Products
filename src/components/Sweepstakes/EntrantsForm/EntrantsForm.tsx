@@ -3,7 +3,7 @@ import { useSweepstakes } from '../../../context/SweepstakesContext';
 import './EntrantsForm.css';
 
 export const EntrantsForm = () => {
-  const { entrants, setEntrants, updateEntrants, error, isLoading } = useSweepstakes();
+  const { entrants, setEntrants, updateEntrants, loadEntrants, error, isLoading } = useSweepstakes();
   const [inputText, setInputText] = useState('');
   const [parsedEntrants, setParsedEntrants] = useState<string[]>([]);
   const [notification, setNotification] = useState<{message: string; type: 'success' | 'error' | 'info' | null}>({
@@ -55,19 +55,31 @@ export const EntrantsForm = () => {
   };
 
   const handleUpdate = async () => {
-    // Get the parsed entrants
+    // Get the parsed entrants from the form
     const newEntrants = parsedEntrants;
+    console.log('Update button clicked with parsed entrants:', newEntrants);
     
     // Update notification state
     setNotification({ message: '', type: null });
     
-    // Update context state
-    setEntrants(newEntrants);
-    
     // Send updates to the server and provide feedback
     if (newEntrants.length > 0) {
       try {
-        await updateEntrants();
+        console.log('Before update operation:', { 
+          parsedEntrants: newEntrants,
+          contextEntrants: entrants
+        });
+        
+        // Pass the parsed entrants directly to the updateEntrants function
+        // This ensures we're using the most up-to-date list from the UI
+        await updateEntrants(newEntrants);
+        console.log('After updateEntrants call with direct list');
+        
+        // After successful update, reload the entrants from the server
+        // This ensures our UI reflects exactly what's stored on the server
+        await loadEntrants();
+        console.log('After loadEntrants call, current entrants:', entrants);
+        
         setNotification({ 
           message: `Successfully updated ${newEntrants.length} entrants`, 
           type: 'success' 

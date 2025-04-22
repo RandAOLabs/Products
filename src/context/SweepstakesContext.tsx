@@ -12,7 +12,7 @@ interface SweepstakesContextType {
   pulls: SweepstakesPull[];
   setEntrants: (entrants: string[]) => void;
   registerSweepstakes: () => Promise<boolean>;
-  updateEntrants: () => Promise<boolean>;
+  updateEntrants: (entrantsList?: string[]) => Promise<boolean>;
   pullWinner: () => Promise<boolean>;
   refreshPulls: () => Promise<void>;
   loadEntrants: () => Promise<void>;
@@ -171,20 +171,33 @@ export const SweepstakesProvider = ({ children, config }: SweepstakesProviderPro
     }
   };
 
-  const updateEntrants = async (): Promise<boolean> => {
+  const updateEntrants = async (entrantsList?: string[]): Promise<boolean> => {
     if (!client) {
       setError('Client not initialized or wallet not connected');
       return false;
     }
 
-    if (entrants.length === 0) {
+    // Use provided entrants list if available, otherwise use context state
+    const entriesToUpdate = entrantsList || entrants;
+    console.log('updateEntrants function called with:', entrantsList ? 'provided list' : 'context state');
+    console.log('Entries to update:', entriesToUpdate);
+
+    if (entriesToUpdate.length === 0) {
       setError('No entrants to update');
       return false;
     }
 
     try {
       setIsLoading(true);
-      const result = await client.setSweepstakesEntrants(entrants);
+      // Always use the most up-to-date list for the API call
+      const result = await client.setSweepstakesEntrants(entriesToUpdate);
+      
+      // Update the context state if we used a provided list
+      if (entrantsList) {
+        console.log('Updating context state with provided list');
+        setEntrants(entrantsList);
+      }
+      
       setIsLoading(false);
       return result;
     } catch (err) {
