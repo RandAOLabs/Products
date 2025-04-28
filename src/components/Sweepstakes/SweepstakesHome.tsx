@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { SweepstakesProvider, useSweepstakes } from '../../context/SweepstakesContext';
 import { useWallet } from '../../context/WalletContext';
@@ -16,6 +16,7 @@ const SweepstakesHomeContent = () => {
     allSweepstakesIds,
     userSweepstakesIds,
     sweepstakesDetails,
+    client,
     setEntrants,
     setSweepstakesDetails,
     registerSweepstakes,
@@ -26,6 +27,19 @@ const SweepstakesHomeContent = () => {
   const [localError, setLocalError] = useState<string | null>(null);
   const [sweepstakesIdInput, setSweepstakesIdInput] = useState('');
   const [isJsonValid, setIsJsonValid] = useState(true);
+  const [showMalformedSweepstakes, setShowMalformedSweepstakes] = useState(false);
+  
+  // States for storing sweepstakes details and validity
+  const [sweepstakesCache, setSweepstakesCache] = useState<{
+    [id: string]: {
+      name: string;
+      description: string;
+      prize: string;
+      endDate: string;
+      isValid: boolean;
+      isLoaded: boolean;
+    }
+  }>({});
   
   // New state for form fields
   const [sweepstakesForm, setSweepstakesForm] = useState({
@@ -44,6 +58,94 @@ const SweepstakesHomeContent = () => {
     }
   }, [isConnected]);
 
+  // Load sweepstakes details for all IDs
+  useEffect(() => {
+    const loadSweepstakesDetails = async () => {
+      if (!client) return;
+      
+      // Combine all IDs to load
+      const allIds = [...new Set([...allSweepstakesIds, ...userSweepstakesIds])];
+      
+      // Process in batches to avoid overloading
+      for (const id of allIds) {
+        // Skip already loaded sweepstakes
+        if (sweepstakesCache[id]?.isLoaded) continue;
+        
+        try {
+          const sweepstakes = await client.viewSweepstakes(id);
+          
+          // Default values if no details
+          let name = 'Untitled';
+          let description = 'No description';
+          let prize = 'N/A';
+          let endDate = 'N/A';
+          let isValid = false;
+          
+          // Parse details if available
+          if (sweepstakes && sweepstakes.Details) {
+            try {
+              const details = JSON.parse(sweepstakes.Details);
+              
+              name = details?.name?.trim() || 'Untitled';
+              description = details?.description?.trim() || 'No description';
+              prize = details?.prize?.trim() || 'N/A';
+              
+              if (details?.endDate) {
+                try {
+                  const date = new Date(details.endDate);
+                  endDate = date.toLocaleDateString();
+                } catch (e) {
+                  endDate = details.endDate;
+                }
+              }
+              
+              // A sweepstakes is valid if it has both name and description
+              isValid = !!(details?.name?.trim() && details?.description?.trim());
+              
+              console.log(`Sweepstakes ${id} validity:`, {
+                name,
+                description,
+                isValid,
+                rawDetails: sweepstakes.Details
+              });
+            } catch (e) {
+              console.error(`Error parsing details for sweepstakes ${id}:`, e);
+            }
+          }
+          
+          // Cache the details
+          setSweepstakesCache(prev => ({
+            ...prev,
+            [id]: {
+              name,
+              description: description.length > 100 ? `${description.substring(0, 97)}...` : description,
+              prize,
+              endDate,
+              isValid,
+              isLoaded: true
+            }
+          }));
+        } catch (e) {
+          console.error(`Error loading details for sweepstakes ${id}:`, e);
+          // Cache the error state
+          setSweepstakesCache(prev => ({
+            ...prev,
+            [id]: {
+              name: 'Error',
+              description: 'Failed to load details',
+              prize: 'N/A',
+              endDate: 'N/A',
+              isValid: false,
+              isLoaded: true
+            }
+          }));
+        }
+      }
+    };
+    
+    loadSweepstakesDetails();
+  }, [client, allSweepstakesIds, userSweepstakesIds]);
+
   // Handle form field changes
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -51,9 +153,40 @@ const SweepstakesHomeContent = () => {
       ...sweepstakesForm,
       [name]: value
     });
+  };
+
+  // Handle entrants data from EntrantsForm
+  const handleEntrantsChange = (entrants: string[]) => {
+    setEntrants(entrants);
+  };
+
+  // Go to a specific sweepstakes
+  const handleGoToSweepstakes = () => {
+    if (sweepstakesIdInput.trim()) {
+      navigate(`/sweepstakes/${sweepstakesIdInput.trim()}`);
+    }
+  };
+
+  // Create a new sweepstakes
+  const handleCreateSweepstakes = async () => {
+    if (entrants.length === 0) {
+      setLocalError('Please add at least one entrant');
+      return;
+    }
     
-    // Convert form to JSON and update context
-    const detailsJson = JSON.stringify({
+    // Validate required fields
+    if (!sweepstakesForm.name.trim()) {
+      setLocalError('Name is required');
+      return;
+    }
+    
+    if (!sweepstakesForm.description.trim()) {
+      setLocalError('Description is required');
+      return;
+    }
+    
+    // Prepare the details as a JSON string
+    const details = JSON.stringify({
       name: sweepstakesForm.name,
       description: sweepstakesForm.description,
       prize: sweepstakesForm.prize,
@@ -62,42 +195,8 @@ const SweepstakesHomeContent = () => {
       maxEntrants: sweepstakesForm.maxEntrants ? parseInt(sweepstakesForm.maxEntrants) : undefined
     });
     
-    setSweepstakesDetails(detailsJson);
-    setIsJsonValid(true); // Form input should always generate valid JSON
-  };
-
-  // Handle entrants list change from the EntrantsForm component
-  const handleEntrantsChange = (entrantsList: string[]) => {
-    setEntrants(entrantsList);
-  };
-
-  // Handle "Go to Sweepstakes" button click
-  const handleGoToSweepstakes = () => {
-    if (sweepstakesIdInput.trim()) {
-      navigate(`/sweepstakes/${sweepstakesIdInput.trim()}`);
-    }
-  };
-
-  // Handle creation of new sweepstakes
-  const handleCreateSweepstakes = async () => {
-    setLocalError(null);
-    
-    // Validate entrants
-    if (entrants.length === 0) {
-      setLocalError('Please provide at least one entrant');
-      return;
-    }
-    
-    // Validate required fields
-    if (!sweepstakesForm.name.trim()) {
-      setLocalError('Please provide a name for your sweepstakes');
-      return;
-    }
-    
-    if (!sweepstakesForm.description.trim()) {
-      setLocalError('Please provide a description for your sweepstakes');
-      return;
-    }
+    // Update the sweepstakesDetails in the context
+    setSweepstakesDetails(details);
     
     try {
       const sweepstakesId = await registerSweepstakes();
@@ -109,6 +208,61 @@ const SweepstakesHomeContent = () => {
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'Failed to create sweepstakes');
     }
+  };
+
+  // Filter sweepstakes based on the showMalformedSweepstakes setting
+  const filteredUserSweepstakesIds = useMemo(() => {
+    return userSweepstakesIds.filter(id => 
+      showMalformedSweepstakes || sweepstakesCache[id]?.isValid
+    );
+  }, [userSweepstakesIds, sweepstakesCache, showMalformedSweepstakes]);
+
+  const filteredAllSweepstakesIds = useMemo(() => {
+    return allSweepstakesIds.filter(id => 
+      showMalformedSweepstakes || sweepstakesCache[id]?.isValid
+    );
+  }, [allSweepstakesIds, sweepstakesCache, showMalformedSweepstakes]);
+
+  // Helper function to render a sweepstakes card
+  const renderSweepstakesCard = (id: string) => {
+    const details = sweepstakesCache[id] || {
+      name: 'Loading...',
+      description: '',
+      prize: 'N/A',
+      endDate: 'N/A',
+      isValid: false,
+      isLoaded: false
+    };
+    
+    const isMalformed = !details.isValid;
+    
+    return (
+      <Link 
+        key={id} 
+        to={`/sweepstakes/${id}`}
+        className={`sweepstakes-card ${isMalformed ? 'malformed' : ''}`}
+      >
+        <div className="sweepstakes-card-header">
+          <h3 className="sweepstakes-card-title">{details.name}</h3>
+          {isMalformed && <span className="malformed-tag">Malformed</span>}
+        </div>
+        <div className="sweepstakes-card-description">{details.description}</div>
+        <div className="sweepstakes-card-details">
+          <div className="sweepstakes-card-detail">
+            <span className="detail-label">Prize:</span>
+            <span className="detail-value">{details.prize}</span>
+          </div>
+          <div className="sweepstakes-card-detail">
+            <span className="detail-label">End Date:</span>
+            <span className="detail-value">{details.endDate}</span>
+          </div>
+        </div>
+        <div className="sweepstakes-card-footer">
+          <div className="sweepstakes-card-id">{id.substring(0, 8)}...</div>
+          <div className="sweepstakes-card-action">View Details →</div>
+        </div>
+      </Link>
+    );
   };
 
   // Helper function to render a sweepstakes grid
@@ -123,16 +277,7 @@ const SweepstakesHomeContent = () => {
 
     return (
       <div className="sweepstakes-grid">
-        {ids.map((id) => (
-          <Link 
-            key={id} 
-            to={`/sweepstakes/${id}`}
-            className="sweepstakes-card"
-          >
-            <div className="sweepstakes-card-id">{id}</div>
-            <div className="sweepstakes-card-action">View Details →</div>
-          </Link>
-        ))}
+        {ids.map(renderSweepstakesCard)}
       </div>
     );
   };
@@ -145,6 +290,23 @@ const SweepstakesHomeContent = () => {
           View, create, and manage your sweepstakes
         </p>
       </div>
+      
+      {/* Filter options */}
+      <div className="filter-options">
+        <label className="checkbox-label">
+          <input 
+            type="checkbox" 
+            checked={showMalformedSweepstakes} 
+            onChange={e => setShowMalformedSweepstakes(e.target.checked)}
+          />
+          Show Malformed Sweepstakes
+        </label>
+        <p className="filter-description">
+          {showMalformedSweepstakes 
+            ? 'Showing all sweepstakes, including those without name or description.' 
+            : 'Hiding sweepstakes that are missing name or description.'}
+        </p>
+      </div>
 
       {/* User's Sweepstakes section */}
       {isConnected && (
@@ -155,8 +317,10 @@ const SweepstakesHomeContent = () => {
               <div className="loading">Loading your sweepstakes...</div>
             ) : (
               renderSweepstakesGrid(
-                userSweepstakesIds, 
-                "You don't have any sweepstakes yet. Create a new one below."
+                filteredUserSweepstakesIds, 
+                userSweepstakesIds.length > 0 && filteredUserSweepstakesIds.length === 0
+                  ? 'All your sweepstakes are malformed. Enable "Show Malformed Sweepstakes" to view them.'
+                  : "You don't have any sweepstakes yet. Create a new one below."
               )
             )}
           </div>
@@ -171,8 +335,10 @@ const SweepstakesHomeContent = () => {
             <div className="loading">Loading sweepstakes...</div>
           ) : (
             renderSweepstakesGrid(
-              allSweepstakesIds, 
-              "There are no sweepstakes available yet."
+              filteredAllSweepstakesIds, 
+              allSweepstakesIds.length > 0 && filteredAllSweepstakesIds.length === 0
+                ? 'All sweepstakes are malformed. Enable "Show Malformed Sweepstakes" to view them.'
+                : "There are no sweepstakes available yet."
             )
           )}
         </div>
@@ -255,6 +421,7 @@ const SweepstakesHomeContent = () => {
                     value={sweepstakesForm.prize} 
                     onChange={handleFormChange} 
                     className="form-input"
+                    placeholder="What's the prize? (optional)"
                   />
                 </div>
                 <div className="form-field">
@@ -274,7 +441,8 @@ const SweepstakesHomeContent = () => {
                     value={sweepstakesForm.rules} 
                     onChange={handleFormChange} 
                     className="form-input"
-                    rows={4}
+                    rows={3}
+                    placeholder="Rules for the sweepstakes (optional)"
                   />
                 </div>
                 <div className="form-field">
@@ -285,13 +453,14 @@ const SweepstakesHomeContent = () => {
                     value={sweepstakesForm.maxEntrants} 
                     onChange={handleFormChange} 
                     className="form-input"
+                    placeholder="Maximum number of entrants (optional)"
+                    min="1"
                   />
                 </div>
               </div>
             </div>
             
             {localError && <div className="error-message">{localError}</div>}
-            {error && <div className="error-message">{error}</div>}
           </div>
         )}
       </div>
