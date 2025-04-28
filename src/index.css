@@ -1,12 +1,14 @@
+@import './styles/theme.css';
+
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-width: 100dvw;
+  width: 100dvw;
   color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
+  
+  /* Base colors already defined in theme.css */
+  
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -15,11 +17,11 @@ width: 100dvw;
 
 a {
   font-weight: 500;
-  color: #646cff;
+  color: var(--accent-primary);
   text-decoration: inherit;
 }
 a:hover {
-  color: #535bf2;
+  color: var(--accent-primary-hover);
 }
 
 body {
@@ -28,19 +30,12 @@ body {
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
+  background-color: var(--background-color);
+  color: var(--text-primary);
 }
 
 h1 {
   font-size: 3.2em;
   line-height: 1.1;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
+  color: var(--text-primary);
 }

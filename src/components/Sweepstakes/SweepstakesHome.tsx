@@ -1,86 +1,80 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { SweepstakesProvider, useSweepstakes } from '../../context/SweepstakesContext';
+import { useWallet } from '../../context/WalletContext';
+import { EntrantsForm } from './EntrantsForm/EntrantsForm';
 import './SweepstakesHome.css';
 
 // This component will be wrapped with SweepstakesProvider in the parent
 const SweepstakesHomeContent = () => {
-  const { 
-    allSweepstakesIds, 
-    loadAllSweepstakes, 
-    isLoading, 
-    getSweepstakesById,
+  const navigate = useNavigate();
+  const { isConnected } = useWallet();
+  const {
+    isLoading,
+    error,
+    entrants,
+    allSweepstakesIds,
+    userSweepstakesIds,
     sweepstakesDetails,
-    setSweepstakesDetails,
-    entrants, 
     setEntrants,
+    setSweepstakesDetails,
     registerSweepstakes,
-    error
+    loadAllSweepstakes
   } = useSweepstakes();
 
-  const navigate = useNavigate();
-  const [sweepstakesIdInput, setSweepstakesIdInput] = useState('');
-  const [entrantsJson, setEntrantsJson] = useState('');
+  // Local state
   const [localError, setLocalError] = useState<string | null>(null);
+  const [sweepstakesIdInput, setSweepstakesIdInput] = useState('');
   const [isJsonValid, setIsJsonValid] = useState(true);
-  const [isEntrantsJsonValid, setIsEntrantsJsonValid] = useState(true);
   
-  // Load all sweepstakes on component mount
+  // New state for form fields
+  const [sweepstakesForm, setSweepstakesForm] = useState({
+    name: '',
+    description: '',
+    prize: '',
+    endDate: '',
+    rules: '',
+    maxEntrants: ''
+  });
+
+  // Load sweepstakes on component mount if wallet is connected
   useEffect(() => {
-    loadAllSweepstakes();
-  }, []); // Empty dependency array to run only on mount
+    if (isConnected) {
+      loadAllSweepstakes();
+    }
+  }, [isConnected]);
 
-  // Navigate to the specified sweepstakes
+  // Handle form field changes
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setSweepstakesForm({
+      ...sweepstakesForm,
+      [name]: value
+    });
+    
+    // Convert form to JSON and update context
+    const detailsJson = JSON.stringify({
+      name: sweepstakesForm.name,
+      description: sweepstakesForm.description,
+      prize: sweepstakesForm.prize,
+      endDate: sweepstakesForm.endDate,
+      rules: sweepstakesForm.rules,
+      maxEntrants: sweepstakesForm.maxEntrants ? parseInt(sweepstakesForm.maxEntrants) : undefined
+    });
+    
+    setSweepstakesDetails(detailsJson);
+    setIsJsonValid(true); // Form input should always generate valid JSON
+  };
+
+  // Handle entrants list change from the EntrantsForm component
+  const handleEntrantsChange = (entrantsList: string[]) => {
+    setEntrants(entrantsList);
+  };
+
+  // Handle "Go to Sweepstakes" button click
   const handleGoToSweepstakes = () => {
-    if (!sweepstakesIdInput.trim()) {
-      setLocalError('Please enter a valid Sweepstakes ID');
-      return;
-    }
-
-    setLocalError(null);
-    navigate(`/sweepstakes/${sweepstakesIdInput.trim()}`);
-  };
-
-  // Handle changes to the details JSON
-  const handleDetailsChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setSweepstakesDetails(e.target.value);
-    
-    // Validate JSON as user types
-    if (!e.target.value.trim()) {
-      // Empty is valid (we'll use default empty object)
-      setIsJsonValid(true);
-      return;
-    }
-    
-    try {
-      JSON.parse(e.target.value);
-      setIsJsonValid(true);
-    } catch (err) {
-      setIsJsonValid(false);
-    }
-  };
-
-  // Handle changes to the entrants JSON
-  const handleEntrantsJsonChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setEntrantsJson(e.target.value);
-    
-    if (!e.target.value.trim()) {
-      setIsEntrantsJsonValid(false);
-      return;
-    }
-    
-    try {
-      const parsed = JSON.parse(e.target.value);
-      // Check if it's an array
-      if (Array.isArray(parsed)) {
-        setIsEntrantsJsonValid(true);
-        // Update entrants in context
-        setEntrants(parsed);
-      } else {
-        setIsEntrantsJsonValid(false);
-      }
-    } catch (err) {
-      setIsEntrantsJsonValid(false);
+    if (sweepstakesIdInput.trim()) {
+      navigate(`/sweepstakes/${sweepstakesIdInput.trim()}`);
     }
   };
 
@@ -89,14 +83,19 @@ const SweepstakesHomeContent = () => {
     setLocalError(null);
     
     // Validate entrants
-    if (!entrantsJson.trim() || !isEntrantsJsonValid) {
-      setLocalError('Please provide a valid JSON array of entrants');
+    if (entrants.length === 0) {
+      setLocalError('Please provide at least one entrant');
       return;
     }
     
-    // Validate details if provided
-    if (sweepstakesDetails.trim() && !isJsonValid) {
-      setLocalError('Please provide valid JSON for details');
+    // Validate required fields
+    if (!sweepstakesForm.name.trim()) {
+      setLocalError('Please provide a name for your sweepstakes');
+      return;
+    }
+    
+    if (!sweepstakesForm.description.trim()) {
+      setLocalError('Please provide a description for your sweepstakes');
       return;
     }
     
@@ -112,6 +111,32 @@ const SweepstakesHomeContent = () => {
     }
   };
 
+  // Helper function to render a sweepstakes grid
+  const renderSweepstakesGrid = (ids: string[], emptyMessage: string) => {
+    if (ids.length === 0) {
+      return (
+        <div className="no-sweepstakes">
+          {emptyMessage}
+        </div>
+      );
+    }
+
+    return (
+      <div className="sweepstakes-grid">
+        {ids.map((id) => (
+          <Link 
+            key={id} 
+            to={`/sweepstakes/${id}`}
+            className="sweepstakes-card"
+          >
+            <div className="sweepstakes-card-id">{id}</div>
+            <div className="sweepstakes-card-action">View Details →</div>
+          </Link>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="sweepstakes-home">
       <div className="sweepstakes-home-header">
@@ -122,29 +147,33 @@ const SweepstakesHomeContent = () => {
       </div>
 
       {/* User's Sweepstakes section */}
+      {isConnected && (
+        <div className="sweepstakes-section">
+          <h2>Your Sweepstakes</h2>
+          <div className="sweepstakes-list">
+            {isLoading ? (
+              <div className="loading">Loading your sweepstakes...</div>
+            ) : (
+              renderSweepstakesGrid(
+                userSweepstakesIds, 
+                "You don't have any sweepstakes yet. Create a new one below."
+              )
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* All Sweepstakes section */}
       <div className="sweepstakes-section">
-        <h2>Your Sweepstakes</h2>
+        <h2>All Sweepstakes</h2>
         <div className="sweepstakes-list">
           {isLoading ? (
             <div className="loading">Loading sweepstakes...</div>
-          ) : allSweepstakesIds.length === 0 ? (
-            <div className="no-sweepstakes">
-              You don't have any sweepstakes yet. Create a new one below or
-              enter a specific sweepstakes ID to view someone else's sweepstakes.
-            </div>
           ) : (
-            <div className="sweepstakes-grid">
-              {allSweepstakesIds.map((id) => (
-                <Link 
-                  key={id} 
-                  to={`/sweepstakes/${id}`}
-                  className="sweepstakes-card"
-                >
-                  <div className="sweepstakes-card-id">{id}</div>
-                  <div className="sweepstakes-card-action">View Details →</div>
-                </Link>
-              ))}
-            </div>
+            renderSweepstakesGrid(
+              allSweepstakesIds, 
+              "There are no sweepstakes available yet."
+            )
           )}
         </div>
       </div>
@@ -175,60 +204,108 @@ const SweepstakesHomeContent = () => {
       <div className="sweepstakes-section">
         <h2>Create New Sweepstakes</h2>
         <p>Create a new sweepstakes by providing a list of entrants and optional details.</p>
-        <div className="create-container">
-          <div className="form-group">
-            <label htmlFor="entrantsJson">Entrants JSON Array:</label>
-            <textarea
-              id="entrantsJson"
-              value={entrantsJson}
-              onChange={handleEntrantsJsonChange}
-              placeholder={'Enter JSON array of entrants, e.g. ["John", "Jane", "Alex"]'}
-              className={`json-input ${!isEntrantsJsonValid && entrantsJson ? 'invalid' : ''}`}
-              rows={6}
-            />
-            {!isEntrantsJsonValid && entrantsJson && (
-              <div className="validation-error">Please enter a valid JSON array</div>
-            )}
+        
+        {!isConnected ? (
+          <div className="connect-wallet-notice">
+            Please connect your wallet to create a sweepstakes.
           </div>
-          
-          <div className="form-group">
-            <label htmlFor="detailsJson">Details JSON (optional):</label>
-            <textarea
-              id="detailsJson"
-              value={sweepstakesDetails}
-              onChange={handleDetailsChange}
-              placeholder={'Enter details as JSON object, e.g. {"name": "Monthly Drawing", "prize": "$100"}'}
-              className={`json-input ${!isJsonValid && sweepstakesDetails ? 'invalid' : ''}`}
-              rows={6}
+        ) : (
+          <div className="create-container">
+            {/* Use the EntrantsForm component for entrants input */}
+            <EntrantsForm 
+              mode="create"
+              onEntrantsChange={handleEntrantsChange}
+              onSubmit={handleCreateSweepstakes}
+              title="Entrants List"
+              buttonText="Create Sweepstakes"
             />
-            {!isJsonValid && sweepstakesDetails && (
-              <div className="validation-error">Please enter valid JSON</div>
-            )}
+            
+            <div className="form-group">
+              <label>Sweepstakes Details:</label>
+              <div className="form-fields">
+                <div className="form-field required-field">
+                  <label>Name:</label>
+                  <input 
+                    type="text" 
+                    name="name" 
+                    value={sweepstakesForm.name} 
+                    onChange={handleFormChange} 
+                    className="form-input"
+                    placeholder="Enter sweepstakes name"
+                    required
+                  />
+                </div>
+                <div className="form-field required-field">
+                  <label>Description:</label>
+                  <textarea 
+                    name="description" 
+                    value={sweepstakesForm.description} 
+                    onChange={handleFormChange} 
+                    className="form-input"
+                    rows={4}
+                    placeholder="Describe your sweepstakes"
+                    required
+                  />
+                </div>
+                <div className="form-field">
+                  <label>Prize:</label>
+                  <input 
+                    type="text" 
+                    name="prize" 
+                    value={sweepstakesForm.prize} 
+                    onChange={handleFormChange} 
+                    className="form-input"
+                  />
+                </div>
+                <div className="form-field">
+                  <label>End Date:</label>
+                  <input 
+                    type="date" 
+                    name="endDate" 
+                    value={sweepstakesForm.endDate} 
+                    onChange={handleFormChange} 
+                    className="form-input"
+                  />
+                </div>
+                <div className="form-field">
+                  <label>Rules:</label>
+                  <textarea 
+                    name="rules" 
+                    value={sweepstakesForm.rules} 
+                    onChange={handleFormChange} 
+                    className="form-input"
+                    rows={4}
+                  />
+                </div>
+                <div className="form-field">
+                  <label>Max Entrants:</label>
+                  <input 
+                    type="number" 
+                    name="maxEntrants" 
+                    value={sweepstakesForm.maxEntrants} 
+                    onChange={handleFormChange} 
+                    className="form-input"
+                  />
+                </div>
+              </div>
+            </div>
+            
+            {localError && <div className="error-message">{localError}</div>}
+            {error && <div className="error-message">{error}</div>}
           </div>
-          
-          <button 
-            onClick={handleCreateSweepstakes}
-            disabled={isLoading || !isEntrantsJsonValid || (sweepstakesDetails && !isJsonValid)}
-            className="create-button"
-          >
-            {isLoading ? 'Creating...' : 'Create New Sweepstakes'}
-          </button>
-        </div>
+        )}
       </div>
-      
-      {(error || localError) && (
-        <div className="error-message">
-          {error || localError}
-        </div>
-      )}
     </div>
   );
 };
 
-export const SweepstakesHome = () => {
+// The parent component that wraps the content with the SweepstakesProvider
+const SweepstakesHome = () => {
   return (
     <SweepstakesProvider>
       <SweepstakesHomeContent />
     </SweepstakesProvider>
   );
 };
+
+export default SweepstakesHome;

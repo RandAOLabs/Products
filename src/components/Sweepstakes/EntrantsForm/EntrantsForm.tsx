@@ -2,8 +2,32 @@ import { useState, useEffect } from 'react';
 import { useSweepstakes } from '../../../context/SweepstakesContext';
 import './EntrantsForm.css';
 
-export const EntrantsForm = () => {
-  const { entrants, setEntrants, updateEntrants, loadEntrants, error, isLoading } = useSweepstakes();
+interface EntrantsFormProps {
+  mode: 'create' | 'update';
+  onEntrantsChange?: (entrants: string[]) => void;
+  onSubmit?: () => void;
+  initialEntrants?: string[];
+  title?: string;
+  buttonText?: string;
+}
+
+export const EntrantsForm = ({
+  mode = 'update',
+  onEntrantsChange,
+  onSubmit,
+  initialEntrants = [],
+  title = 'Entrants List',
+  buttonText = mode === 'create' ? 'Create Sweepstakes' : 'Update List'
+}: EntrantsFormProps) => {
+  const { 
+    entrants, 
+    setEntrants, 
+    updateEntrants, 
+    loadEntrants, 
+    error, 
+    isLoading 
+  } = useSweepstakes();
+  
   const [inputText, setInputText] = useState('');
   const [parsedEntrants, setParsedEntrants] = useState<string[]>([]);
   const [notification, setNotification] = useState<{message: string; type: 'success' | 'error' | 'info' | null}>({
@@ -11,59 +35,125 @@ export const EntrantsForm = () => {
     type: null
   });
 
-  // Update input text when entrants change
+  // Initialize form based on initialEntrants or context entrants
   useEffect(() => {
-    if (entrants.length > 0) {
+    // For create mode, prioritize initialEntrants passed as props
+    // For update mode, prioritize context entrants if no initialEntrants provided
+    if (mode === 'create' && initialEntrants.length > 0) {
+      setInputText(initialEntrants.join('\n'));
+      setParsedEntrants(initialEntrants);
+    } else if (mode === 'update' && entrants.length > 0) {
       setInputText(entrants.join('\n'));
       setParsedEntrants(entrants);
     }
-  }, [entrants]);
+  }, [mode, initialEntrants, entrants]);
 
   // Parse input text to get entrants list
   const parseInput = (text: string): string[] => {
-    // First split by new lines
-    const lines = text.split('\n');
+    // First, handle single-line entries with multiple formats
+    // Try to parse intelligently based on what seems to be the separator
+    let lines: string[] = [];
     
-    // Process each line and handle comma-separated values
-    const results: string[] = [];
-    
-    lines.forEach(line => {
-      // Check if the line contains commas
-      if (line.includes(',')) {
-        // Split by comma and add each non-empty item
-        line.split(',')
-          .map(item => item.trim())
-          .filter(item => item.length > 0)
-          .forEach(item => results.push(item));
-      } else {
-        // If no commas, add the line if it's not empty
-        const trimmed = line.trim();
-        if (trimmed.length > 0) {
-          results.push(trimmed);
+    // If single line with commas, split by commas
+    if (!text.includes('\n') && text.includes(',')) {
+      lines = text.split(',');
+    } 
+    // If single line with semicolons, split by semicolons
+    else if (!text.includes('\n') && text.includes(';')) {
+      lines = text.split(';');
+    }
+    // If single line with spaces (and no commas/semicolons), split by spaces
+    else if (!text.includes('\n') && !text.includes(',') && !text.includes(';')) {
+      // Split by one or more spaces
+      lines = text.split(/\s+/);
+    }
+    // Otherwise, split by new lines
+    else {
+      lines = text.split('\n');
+      
+      // Process each line and handle comma/semicolon/space-separated values within lines
+      const expandedLines: string[] = [];
+      
+      lines.forEach(line => {
+        // Check if the line contains commas or semicolons
+        if (line.includes(',')) {
+          // Split by comma and add each non-empty item
+          line.split(',')
+            .map(item => item.trim())
+            .filter(item => item.length > 0)
+            .forEach(item => expandedLines.push(item));
+        } else if (line.includes(';')) {
+          // Split by semicolon and add each non-empty item
+          line.split(';')
+            .map(item => item.trim())
+            .filter(item => item.length > 0)
+            .forEach(item => expandedLines.push(item));
+        } else if (line.trim().includes(' ')) {
+          // Split by spaces and add each non-empty item
+          line.split(/\s+/)
+            .map(item => item.trim())
+            .filter(item => item.length > 0)
+            .forEach(item => expandedLines.push(item));
+        } else {
+          // If no separators, add the line if it's not empty
+          const trimmed = line.trim();
+          if (trimmed.length > 0) {
+            expandedLines.push(trimmed);
+          }
         }
-      }
-    });
+      });
+      
+      lines = expandedLines;
+    }
+    
+    // Clean up all entries
+    const cleanedEntries = lines
+      .map(item => item.trim())
+      .filter(item => item.length > 0);
     
     // Remove duplicates
-    return [...new Set(results)];
+    return [...new Set(cleanedEntries)];
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newText = e.target.value;
     setInputText(newText);
-    setParsedEntrants(parseInput(newText));
+    const newEntrants = parseInput(newText);
+    setParsedEntrants(newEntrants);
+    
+    // If in create mode or an onChange handler is provided, call it
+    if (onEntrantsChange) {
+      onEntrantsChange(newEntrants);
+    }
   };
 
-  const handleUpdate = async () => {
+  const handleSubmit = async () => {
     // Get the parsed entrants from the form
     const newEntrants = parsedEntrants;
-    console.log('Update button clicked with parsed entrants:', newEntrants);
+    console.log(`${mode === 'create' ? 'Create' : 'Update'} button clicked with parsed entrants:`, newEntrants);
     
     // Update notification state
     setNotification({ message: '', type: null });
     
-    // Send updates to the server and provide feedback
-    if (newEntrants.length > 0) {
+    // If no entrants, show info notification
+    if (newEntrants.length === 0) {
+      setNotification({ 
+        message: 'No entrants to process', 
+        type: 'info' 
+      });
+      return;
+    }
+    
+    // If in create mode and an onSubmit handler is provided, call it
+    if (mode === 'create' && onSubmit) {
+      // For create mode, we'll just pass the entrants to the parent
+      // which will handle creating the sweepstakes
+      onSubmit();
+      return;
+    }
+    
+    // For update mode, proceed with updating entrants
+    if (mode === 'update') {
       try {
         console.log('Before update operation:', { 
           parsedEntrants: newEntrants,
@@ -71,12 +161,10 @@ export const EntrantsForm = () => {
         });
         
         // Pass the parsed entrants directly to the updateEntrants function
-        // This ensures we're using the most up-to-date list from the UI
         await updateEntrants(newEntrants);
         console.log('After updateEntrants call with direct list');
         
         // After successful update, reload the entrants from the server
-        // This ensures our UI reflects exactly what's stored on the server
         await loadEntrants();
         console.log('After loadEntrants call, current entrants:', entrants);
         
@@ -90,11 +178,6 @@ export const EntrantsForm = () => {
           type: 'error' 
         });
       }
-    } else {
-      setNotification({ 
-        message: 'No entrants to update', 
-        type: 'info' 
-      });
     }
     
     // Clear notification after 5 seconds
@@ -105,14 +188,16 @@ export const EntrantsForm = () => {
 
   return (
     <div className="entrants-form">
-      <h2>Entrants List</h2>
-      <p className="form-info">Enter names (one per line or separated by commas)</p>
+      <h2>{title}</h2>
+      <p className="form-info">
+        Enter names separated by commas, spaces, semicolons, or new lines.
+      </p>
       
       <div className="input-container">
         <textarea
           value={inputText}
           onChange={handleInputChange}
-          placeholder="Enter names (one per line or comma-separated)"
+          placeholder="Enter names (separated by commas, spaces, semicolons, or new lines)"
           rows={10}
           disabled={isLoading}
         />
@@ -137,11 +222,11 @@ export const EntrantsForm = () => {
         </div>
         
         <button 
-          onClick={handleUpdate} 
+          onClick={handleSubmit} 
           disabled={isLoading || parsedEntrants.length === 0}
           className="update-button"
         >
-          {isLoading ? 'Updating...' : 'Update List'}
+          {isLoading ? (mode === 'create' ? 'Creating...' : 'Updating...') : buttonText}
         </button>
       </div>
       

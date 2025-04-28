@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { SweepstakesProvider, useSweepstakes } from '../../context/SweepstakesContext';
-import { EntrantsForm } from './EntrantsForm';
+import { EntrantsForm } from './EntrantsForm/EntrantsForm';
 import { PullsHistory } from './PullsHistory';
 import './SweepstakesDetail.css';
 
@@ -21,7 +21,9 @@ const SweepstakesDetailContent = () => {
     setNewEntrantText,
     pullDetails,
     setPullDetails,
-    pullWinner
+    pullWinner,
+    client,
+    isClientReady // Use the new client ready state
   } = useSweepstakes();
   
   const { sweepstakesId } = useParams<{ sweepstakesId: string }>();
@@ -31,10 +33,68 @@ const SweepstakesDetailContent = () => {
   
   // Load sweepstakes data when component mounts
   useEffect(() => {
-    if (sweepstakesId && sweepstakesId !== currentSweepstakesId) {
-      getSweepstakesById(sweepstakesId);
-    }
-  }, [sweepstakesId, currentSweepstakesId, getSweepstakesById]);
+    // Add very detailed logging about the URL parameter
+    console.log("🔍 SweepstakesDetail - URL Parameter Analysis:", {
+      sweepstakesIdFromURL: sweepstakesId,
+      currentSweepstakesIdInContext: currentSweepstakesId,
+      isSameId: sweepstakesId === currentSweepstakesId,
+      typeOfSweepstakesId: typeof sweepstakesId,
+      sweepstakesIdLength: sweepstakesId ? sweepstakesId.length : 0,
+      hasPossibleSpecialChars: sweepstakesId ? /[^\w-]/.test(sweepstakesId) : false,
+      urlPath: window.location.pathname,
+      clientInitialized: !!client,
+      isClientReady // Log the client ready state
+    });
+    
+    // Initialize a retry counter for client initialization
+    let retryCount = 0;
+    const maxRetries = 10;  
+    const retryDelay = 1000;  
+    
+    // Create a function to load sweepstakes with retry logic
+    const attemptLoadSweepstakes = () => {
+      if (!sweepstakesId) {
+        console.error("❌ No sweepstakes ID found in URL parameters");
+        return;
+      }
+      
+      // Safely trim any potential whitespace
+      const cleanId = sweepstakesId.trim();
+      
+      // Check if client is initialized AND ready
+      if (!client || !isClientReady) {
+        if (retryCount < maxRetries) {
+          console.log(`⏳ Client not ready yet. Retrying... (Attempt ${retryCount + 1}/${maxRetries})`, {
+            hasClient: !!client,
+            isClientReady
+          });
+          
+          retryCount++;
+          setTimeout(attemptLoadSweepstakes, retryDelay); 
+          return;
+        } else {
+          console.error("❌ Client failed to initialize after multiple attempts");
+          return;
+        }
+      }
+      
+      console.log(`🔄 Client initialized and ready. Loading sweepstakes with ID: ${cleanId}`);
+      
+      // Check for ID mismatch and then load
+      if (cleanId !== currentSweepstakesId) {
+        console.log(`📥 Fetching sweepstakes details for ID: ${cleanId}`);
+        getSweepstakesById(cleanId);
+      } else {
+        console.log(`⏭️ Skipping fetch - ID ${cleanId} already loaded`);
+      }
+    };
+    
+    // Start the loading process with a small delay to ensure React Router has processed the URL
+    const loadTimeout = setTimeout(attemptLoadSweepstakes, 100);
+    
+    // Clean up timeout if component unmounts
+    return () => clearTimeout(loadTimeout);
+  }, [sweepstakesId, currentSweepstakesId, client, isClientReady]);
 
   // Determine if the current user is the owner of this sweepstakes
   useEffect(() => {
@@ -42,8 +102,19 @@ const SweepstakesDetailContent = () => {
       // Compare user ID with the creator ID from sweepstakesData
       // This would be a real check in production code
       setIsOwner(isPaid);
+      
+      // Log detailed information about the sweepstakes for debugging
+      console.log("Sweepstakes detail component data:", {
+        sweepstakesId,
+        currentSweepstakesId,
+        sweepstakesData,
+        isOwner: isPaid,
+        entrantsCount: entrants.length,
+        pullsCount: pulls.length,
+        isListLocked
+      });
     }
-  }, [sweepstakesData, isPaid]);
+  }, [sweepstakesData, isPaid, sweepstakesId, currentSweepstakesId, entrants.length, pulls.length, isListLocked]);
 
   const handleAddEntrant = async () => {
     if (!newEntrantText.trim()) {
@@ -94,7 +165,17 @@ const SweepstakesDetailContent = () => {
     }
   };
 
-  // Format JSON for display
+  // Parse details JSON into object
+  const parseDetails = (jsonString: string | null | undefined) => {
+    if (!jsonString) return null;
+    try {
+      return JSON.parse(jsonString);
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // Format JSON for display (fallback for legacy)
   const formatJson = (jsonString: string | null | undefined) => {
     if (!jsonString) return '{}';
     try {
@@ -159,7 +240,71 @@ const SweepstakesDetailContent = () => {
           {sweepstakesData?.Details && (
             <div className="details-section">
               <h3>Details</h3>
-              <pre className="details-json">{formatJson(sweepstakesData?.Details)}</pre>
+              {(() => {
+                const details = parseDetails(sweepstakesData?.Details);
+                if (!details) {
+                  // Fallback to raw JSON if cannot parse
+                  return <pre className="details-json">{formatJson(sweepstakesData?.Details)}</pre>;
+                }
+                
+                return (
+                  <div className="structured-details">
+                    {details.name && (
+                      <div className="detail-row">
+                        <span className="label">Name:</span>
+                        <span className="value highlight">{details.name}</span>
+                      </div>
+                    )}
+                    
+                    {details.description && (
+                      <div className="detail-row description">
+                        <span className="label">Description:</span>
+                        <div className="value description-text">{details.description}</div>
+                      </div>
+                    )}
+                    
+                    {details.prize && (
+                      <div className="detail-row">
+                        <span className="label">Prize:</span>
+                        <span className="value prize">{details.prize}</span>
+                      </div>
+                    )}
+                    
+                    {details.endDate && (
+                      <div className="detail-row">
+                        <span className="label">End Date:</span>
+                        <span className="value">{details.endDate}</span>
+                      </div>
+                    )}
+                    
+                    {details.rules && (
+                      <div className="detail-row rules">
+                        <span className="label">Rules:</span>
+                        <div className="value rules-text">{details.rules}</div>
+                      </div>
+                    )}
+                    
+                    {details.maxEntrants && (
+                      <div className="detail-row">
+                        <span className="label">Max Entrants:</span>
+                        <span className="value">{details.maxEntrants}</span>
+                      </div>
+                    )}
+                    
+                    {/* Show other fields that might exist but weren't in our form */}
+                    {Object.entries(details)
+                      .filter(([key]) => !['name', 'description', 'prize', 'endDate', 'rules', 'maxEntrants'].includes(key))
+                      .map(([key, value]) => (
+                        <div className="detail-row" key={key}>
+                          <span className="label">{key.charAt(0).toUpperCase() + key.slice(1)}:</span>
+                          <span className="value">
+                            {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -173,42 +318,28 @@ const SweepstakesDetailContent = () => {
               <div className="locked-notice">
                 This sweepstakes is locked and entrants cannot be modified.
               </div>
-            ) : (
-              isOwner && !isListLocked && (
-                <div className="add-entrant-form">
-                  <div className="form-row">
-                    <input
-                      type="text"
-                      placeholder="Enter a name"
-                      value={newEntrantText}
-                      onChange={(e) => setNewEntrantText(e.target.value)}
-                      className="entrant-input"
-                    />
-                    <button 
-                      onClick={handleAddEntrant}
-                      disabled={isLoading || !newEntrantText.trim()}
-                      className="add-button"
-                    >
-                      Add
-                    </button>
-                  </div>
-                </div>
-              )
-            )}
+            ) : null}
             
-            <div className="entrants-list">
-              {entrants.length === 0 ? (
-                <div className="no-entrants">No entrants available</div>
-              ) : (
-                <div className="entrants-container">
-                  {entrants.map((entrant, index) => (
-                    <div key={index} className="entrant-item">
-                      {entrant}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* Replace the existing entrants form with our enhanced EntrantsForm */}
+            {isOwner && !isListLocked ? (
+              <EntrantsForm 
+                mode="update"
+                title="Update Entrants"
+                buttonText="Update Entrants List"
+              />
+            ) : (
+              <div className="entrants-list">
+                {entrants.length === 0 ? (
+                  <div className="no-entrants">No entrants available</div>
+                ) : (
+                  <div className="entrants-container">
+                    {entrants.map((entrant, index) => (
+                      <span key={index} className="entrant-item">{entrant}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           
           {isOwner && !isListLocked && (
@@ -250,13 +381,11 @@ const SweepstakesDetailContent = () => {
                   <div key={index} className="pull-item">
                     <div className="pull-header">
                       <div className="pull-winner">{pull.Winner || 'Unknown Winner'}</div>
-                      <div className="pull-id">ID: {pull.Id}</div>
+                      <div className="pull-id">Pull #{index + 1}</div>
                     </div>
-                    {/* RafflePull doesn't have a Details property directly,
-                        so we display other available information */}
+                    {/* Display available information from the pull */}
                     <div className="pull-details">
-                      <div>User: {pull.User}</div>
-                      <div>Callback ID: {pull.CallbackId}</div>
+                      <div>Details: {pull.Details || 'No details available'}</div>
                     </div>
                   </div>
                 ))}
