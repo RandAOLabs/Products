@@ -257,14 +257,32 @@
   padding-bottom: 0.5rem;
 }
 
-.json-input {
+.json-input,
+.form-input {
   width: 100%;
   padding: 0.75rem;
   border: 1px solid var(--border-color);
   border-radius: 4px;
-  font-family: monospace;
   font-size: 0.9rem;
   resize: vertical;
+}
+
+.form-input {
+  font-family: inherit;
+  background-color: var(--surface-alt-color);
+  margin-top: 0.25rem;
+  transition: border-color 0.2s;
+}
+
+.form-input:focus {
+  border-color: var(--accent-primary);
+  outline: none;
+}
+
+.structured-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
 .json-input.invalid {
@@ -286,6 +304,8 @@
   cursor: pointer;
   font-weight: 600;
   transition: background-color 0.2s;
+  margin-top: 1rem;
+  width: 100%;
 }
 
 .pull-button:hover:not(:disabled) {
@@ -350,12 +370,79 @@
   background-color: var(--surface-color);
 }
 
+.structured-pull-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.detail-item {
+  display: flex;
+  border-bottom: 1px dashed var(--border-light);
+  padding-bottom: 0.5rem;
+}
+
+.detail-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.detail-label {
+  font-weight: bold;
+  width: 120px;
+  color: var(--text-secondary);
+}
+
+.detail-value {
+  flex: 1;
+  color: var(--text-primary);
+}
+
+.help-text {
+  margin-top: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
 .no-pulls {
   padding: 2rem;
   text-align: center;
   background-color: var(--surface-color);
   border-radius: 8px;
   color: var(--text-secondary);
+}
+
+/* Progress bar styles */
+.progress-bar-container {
+  margin: 1rem 0;
+  background-color: var(--surface-alt-color);
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: var(--card-shadow);
+}
+
+.progress-bar-label {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.progress-bar {
+  height: 10px;
+  background-color: var(--surface-color);
+  border-radius: 5px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background-color: var(--accent-primary);
+  transition: width 0.3s ease;
+  position: absolute;
+  left: 0;
+  top: 0;
 }
 
 /* Loading and error states */

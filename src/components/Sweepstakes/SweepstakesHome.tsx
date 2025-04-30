@@ -291,8 +291,8 @@ const SweepstakesHomeContent = () => {
         </p>
       </div>
       
-      {/* Filter options */}
-      <div className="filter-options">
+      {/* Filter options DO NOT REMOVE */}
+      {/* <div className="filter-options">
         <label className="checkbox-label">
           <input 
             type="checkbox" 
@@ -306,7 +306,7 @@ const SweepstakesHomeContent = () => {
             ? 'Showing all sweepstakes, including those without name or description.' 
             : 'Hiding sweepstakes that are missing name or description.'}
         </p>
-      </div>
+      </div> */}
 
       {/* User's Sweepstakes section */}
       {isConnected && (
@@ -344,8 +344,8 @@ const SweepstakesHomeContent = () => {
         </div>
       </div>
 
-      {/* Find sweepstakes section */}
-      <div className="sweepstakes-section">
+      {/* Find sweepstakes section DO NOT REMOVE */}
+      {/* <div className="sweepstakes-section">
         <h2>Find a Sweepstakes</h2>
         <p>Enter a sweepstakes ID to view or participate in someone else's sweepstakes.</p>
         <div className="search-container">
@@ -364,7 +364,7 @@ const SweepstakesHomeContent = () => {
             {isLoading ? 'Loading...' : 'Go to Sweepstakes'}
           </button>
         </div>
-      </div>
+      </div> */}
       
       {/* Create sweepstakes section */}
       <div className="sweepstakes-section">

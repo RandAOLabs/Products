@@ -511,14 +511,12 @@ export const SweepstakesProvider = ({ children, config }: SweepstakesProviderPro
         return;
       }
       
-      const response = await sweepstakesClient.viewSweepstakesEntrants(currentSweepstakesId);
-      console.log('Entrants response:', response);
+      // Get sweepstakes to access its entries
+      const sweepstakesData = await sweepstakesClient.viewSweepstakes(currentSweepstakesId);
+      console.log('Entrants from sweepstakes data:', sweepstakesData);
       
-      if (response && Array.isArray(response)) {
-        setEntrants(response);
-      } else if (response && response.Entries && Array.isArray(response.Entries)) {
-        // Handle case where response might have an Entries property
-        setEntrants(response.Entries);
+      if (sweepstakesData && sweepstakesData.Entries && Array.isArray(sweepstakesData.Entries)) {
+        setEntrants(sweepstakesData.Entries);
       } else {
         setEntrants([]);
       }
@@ -531,47 +529,109 @@ export const SweepstakesProvider = ({ children, config }: SweepstakesProviderPro
   const loadSweepstakesPulls = async (sweepstakesClient: SweepstakesClient) => {
     try {
       if (!currentSweepstakesId) {
+        console.log('⚠️ No currentSweepstakesId available for loading pulls');
         setPulls([]);
         return;
       }
       
-      // First, get sweepstakes data to check PullCount
+      console.log('🔍 PULL LOADING - Starting process for sweepstakes:', currentSweepstakesId);
+      
+      // APPROACH 1: Use sweepstakesData from state if available
+      if (sweepstakesData && sweepstakesData.Pulls && sweepstakesData.Pulls.length > 0) {
+        console.log('🎯 PULL LOADING - Found pulls directly in sweepstakesData:', sweepstakesData.Pulls);
+        
+        // Transform to ensure proper format
+        const formattedPulls = sweepstakesData.Pulls.map((pull, index) => ({
+          ...pull,
+          Id: pull.Id || index.toString(),
+          Winner: pull.Winner || 'Unknown'
+        }));
+        
+        console.log('✅ PULL LOADING - Setting pulls from sweepstakesData:', formattedPulls);
+        setPulls(formattedPulls);
+        return;
+      }
+      
+      // APPROACH 2: Fetch from viewAllSweepstakes
+      console.log('🔄 PULL LOADING - Attempting to get pulls from viewAllSweepstakes');
       const allSweepstakesResponse = await sweepstakesClient.viewAllSweepstakes();
-      const sweepstakesData = allSweepstakesResponse?.[currentSweepstakesId];
+      const sweepstakesDataFromApi = allSweepstakesResponse?.[currentSweepstakesId];
       
-      console.log('Loading pulls for sweepstakes:', currentSweepstakesId);
-      console.log('Sweepstakes data for pulls:', sweepstakesData);
+      console.log('📦 PULL LOADING - Sweepstakes data from API:', sweepstakesDataFromApi);
       
-      if (!sweepstakesData || typeof sweepstakesData.PullCount !== 'number' || sweepstakesData.PullCount === 0) {
-        console.log('No pulls found for this sweepstakes');
+      // Check if Pulls are directly available in the response
+      if (sweepstakesDataFromApi && sweepstakesDataFromApi.Pulls && 
+          Array.isArray(sweepstakesDataFromApi.Pulls) && 
+          sweepstakesDataFromApi.Pulls.length > 0) {
+        
+        console.log('🎯 PULL LOADING - Found pulls in API response:', sweepstakesDataFromApi.Pulls);
+        
+        // Transform to ensure proper format
+        const formattedPulls = sweepstakesDataFromApi.Pulls.map((pull, index) => ({
+          ...pull,
+          Id: pull.Id || index.toString(),
+          Winner: pull.Winner || 'Unknown'
+        }));
+        
+        console.log('✅ PULL LOADING - Setting pulls from API data:', formattedPulls);
+        setPulls(formattedPulls);
+        return;
+      }
+      
+      // APPROACH 3: Get individual pulls based on PullCount
+      const pullCount = sweepstakesDataFromApi?.PullCount || sweepstakesData?.PullCount || 0;
+      
+      console.log(`🔢 PULL LOADING - PullCount detected: ${pullCount}`);
+      
+      if (pullCount <= 0) {
+        console.log('⚠️ PULL LOADING - No pulls found based on PullCount');
         setPulls([]);
         return;
       }
       
       // Get individual pulls based on PullCount
+      console.log(`🔄 PULL LOADING - Attempting to fetch ${pullCount} individual pulls`);
       const pullsArray: SweepstakesPull[] = [];
-      for (let i = 0; i < sweepstakesData.PullCount; i++) {
+      let successCount = 0;
+      let errorCount = 0;
+      
+      for (let i = 0; i < pullCount; i++) {
         try {
-          console.log(`Fetching pull ${i} for sweepstakes ${currentSweepstakesId}`);
-          const pullResponse = await sweepstakesClient.viewSweepstakesPull(currentSweepstakesId, i.toString());
+          const pullId = i.toString();
+          console.log(`🔹 PULL LOADING - Fetching pull ${pullId} for sweepstakes ${currentSweepstakesId}`);
+          
+          const pullResponse = await sweepstakesClient.viewSweepstakesPull(currentSweepstakesId, pullId);
           
           if (pullResponse) {
-            console.log(`Pull ${i} data:`, pullResponse);
+            console.log(`✓ PULL LOADING - Successfully fetched pull ${pullId}:`, pullResponse);
             pullsArray.push({
               ...pullResponse,
-              Id: i.toString(), // Ensure we have an ID for rendering
+              Id: pullResponse.Id || pullId,
               Winner: pullResponse.Winner || 'Unknown'
             });
+            successCount++;
+          } else {
+            console.warn(`⚠️ PULL LOADING - Received empty response for pull ${pullId}`);
+            errorCount++;
           }
         } catch (pullErr) {
-          console.error(`Error fetching pull ${i}:`, pullErr);
+          console.error(`❌ PULL LOADING - Error fetching pull ${i}:`, pullErr);
+          errorCount++;
         }
       }
       
-      console.log('All pulls loaded:', pullsArray);
-      setPulls(pullsArray);
+      console.log(`📊 PULL LOADING - Fetch results: ${successCount} successes, ${errorCount} errors`);
+      
+      if (pullsArray.length > 0) {
+        console.log('✅ PULL LOADING - Setting pulls from individual fetches:', pullsArray);
+        setPulls(pullsArray);
+      } else {
+        console.warn('⚠️ PULL LOADING - No pulls could be fetched individually despite PullCount > 0');
+        setPulls([]);
+      }
+      
     } catch (err) {
-      console.error('Failed to load pulls:', err);
+      console.error('❌ PULL LOADING - Failed to load pulls:', err);
       setPulls([]);
     }
   };
@@ -686,8 +746,12 @@ export const SweepstakesProvider = ({ children, config }: SweepstakesProviderPro
     try {
       setIsLoading(true);
 
-      // Perform the pull for the current sweepstakes
-      await client.pullSweepstakes(currentSweepstakesId);
+      // Get the optional details JSON if provided
+      const details = pullDetails ? pullDetails.trim() : '';
+      console.log('Pull details to be sent:', { details });
+
+      // Perform the pull for the current sweepstakes with the details
+      await client.pullSweepstakes(currentSweepstakesId, details);
       
       // Refresh the pulls list
       await loadSweepstakesPulls(client);
@@ -698,6 +762,7 @@ export const SweepstakesProvider = ({ children, config }: SweepstakesProviderPro
       setIsLoading(false);
       return true;
     } catch (err) {
+      console.error('Failed to pull winner:', err);
       setError(err instanceof Error ? err.message : 'Failed to pull winner');
       setIsLoading(false);
       return false;
@@ -721,8 +786,8 @@ export const SweepstakesProvider = ({ children, config }: SweepstakesProviderPro
       // Add the new entrant to the existing list
       const updatedEntrants = [...entrants, entrant.trim()];
       
-      // Update the sweepstakes entrants
-      await client.setSweepstakesEntrants(updatedEntrants);
+      // Update the sweepstakes entrants - include the sweepstakes ID
+      await client.setSweepstakesEntrants(updatedEntrants, currentSweepstakesId);
 
       // Update the local state
       setEntrants(updatedEntrants);

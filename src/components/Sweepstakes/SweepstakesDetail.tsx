@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { SweepstakesProvider, useSweepstakes } from '../../context/SweepstakesContext';
 import { EntrantsForm } from './EntrantsForm/EntrantsForm';
@@ -22,18 +22,106 @@ const SweepstakesDetailContent = () => {
     pullDetails,
     setPullDetails,
     pullWinner,
+    refreshPulls, // Add the refreshPulls function
     client,
     isClientReady // Use the new client ready state
   } = useSweepstakes();
   
   const { sweepstakesId } = useParams<{ sweepstakesId: string }>();
   const [localError, setLocalError] = useState<string | null>(null);
-  const [isDetailsJsonValid, setIsDetailsJsonValid] = useState(true);
+  const [pullReward, setPullReward] = useState<string>('');
+  const [pullRank, setPullRank] = useState<string>('');
+  const [pullDescription, setPullDescription] = useState<string>('');
   const [isOwner, setIsOwner] = useState(false);
+  const didInitialRefresh = useRef<boolean>(false); // Track if we've done the initial refresh
+  const [progress, setProgress] = useState<number>(0); // For progress bar
+  const [showProgress, setShowProgress] = useState<boolean>(false); // Toggle progress bar visibility
+  
+  // Memoized pulls display logic - moved to top level to comply with Rules of Hooks
+  const pullsDisplayContent = useMemo(() => {
+    // Use pulls from context state first
+    let availablePulls = pulls || [];
+    
+    // If no pulls in context but they exist in sweepstakesData, use those
+    if (availablePulls.length === 0 && sweepstakesData?.Pulls && sweepstakesData.Pulls.length > 0) {
+      // Only log this once when the component renders, not on every input change
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('🔄 Using pulls from sweepstakesData directly for display');
+      }
+      availablePulls = sweepstakesData.Pulls;
+    }
+    
+    if (availablePulls.length === 0) {
+      return <div className="no-pulls">No pulls have been made yet</div>;
+    }
+    
+    return (
+      <div className="pulls-container">
+        {availablePulls.map((pull, index) => {
+          // Try to parse details if they exist
+          let parsedDetails = null;
+          try {
+            if (pull.Details) {
+              parsedDetails = JSON.parse(pull.Details);
+            }
+          } catch (e) {
+            // Keep parsedDetails as null if parsing fails
+          }
+                                  
+          return (
+            <div key={index} className="pull-item">
+              <div className="pull-header">
+                <div className="pull-winner">{pull.Winner || 'Unknown Winner'}</div>
+                <div className="pull-id">Pull #{index + 1}</div>
+              </div>
+              {/* Display available information from the pull */}
+              <div className="pull-details">
+                {parsedDetails ? (
+                  <div className="structured-pull-details">
+                    {parsedDetails.reward && (
+                      <div className="detail-item">
+                        <span className="detail-label">Reward:</span>
+                        <span className="detail-value">{parsedDetails.reward}</span>
+                      </div>
+                    )}
+                    {parsedDetails.rank !== undefined && (
+                      <div className="detail-item">
+                        <span className="detail-label">Rank:</span>
+                        <span className="detail-value">{parsedDetails.rank}</span>
+                      </div>
+                    )}
+                    {parsedDetails.description && (
+                      <div className="detail-item">
+                        <span className="detail-label">Description:</span>
+                        <span className="detail-value">{parsedDetails.description}</span>
+                      </div>
+                    )}
+                    {/* Show other fields that might exist but weren't in our standard form */}
+                    {Object.entries(parsedDetails)
+                      .filter(([key]) => !['reward', 'rank', 'description'].includes(key))
+                      .map(([key, value]) => (
+                        <div className="detail-item" key={key}>
+                          <span className="detail-label">{key.charAt(0).toUpperCase() + key.slice(1)}:</span>
+                          <span className="detail-value">
+                            {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                ) : (
+                  <div>Details: {pull.Details || 'No details available'}</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }, [pulls, sweepstakesData?.Pulls]); // Only re-render when pulls or sweepstakesData.Pulls change
   
   // Load sweepstakes data when component mounts
   useEffect(() => {
-    // Add very detailed logging about the URL parameter
+    // Add very detailed logging about the URL parameter (only once during initial mount)
     console.log("🔍 SweepstakesDetail - URL Parameter Analysis:", {
       sweepstakesIdFromURL: sweepstakesId,
       currentSweepstakesIdInContext: currentSweepstakesId,
@@ -86,6 +174,12 @@ const SweepstakesDetailContent = () => {
         getSweepstakesById(cleanId);
       } else {
         console.log(`⏭️ Skipping fetch - ID ${cleanId} already loaded`);
+        // Only refresh pulls on initial load, not on every render
+        if (!didInitialRefresh.current) {
+          console.log('🔄 Performing initial pulls refresh');
+          refreshPulls();
+          didInitialRefresh.current = true;
+        }
       }
     };
     
@@ -94,7 +188,8 @@ const SweepstakesDetailContent = () => {
     
     // Clean up timeout if component unmounts
     return () => clearTimeout(loadTimeout);
-  }, [sweepstakesId, currentSweepstakesId, client, isClientReady]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sweepstakesId, currentSweepstakesId, client, isClientReady]);  // Remove dependencies that cause re-renders
 
   // Determine if the current user is the owner of this sweepstakes
   useEffect(() => {
@@ -103,6 +198,15 @@ const SweepstakesDetailContent = () => {
       // This would be a real check in production code
       setIsOwner(isPaid);
       
+      // Check if we have pulls in the data and log it
+      const hasDataPulls = !!(sweepstakesData.Pulls && sweepstakesData.Pulls.length > 0);
+      console.log("📊 Pulls analysis:", {
+        pullsInContextState: pulls.length,
+        pullsInSweepstakesData: sweepstakesData.Pulls?.length || 0,
+        pullCountValue: sweepstakesData.PullCount || 0,
+        hasDataPulls
+      });
+      
       // Log detailed information about the sweepstakes for debugging
       console.log("Sweepstakes detail component data:", {
         sweepstakesId,
@@ -110,7 +214,7 @@ const SweepstakesDetailContent = () => {
         sweepstakesData,
         isOwner: isPaid,
         entrantsCount: entrants.length,
-        pullsCount: pulls.length,
+        pullsCount: sweepstakesData.PullCount || pulls.length,
         isListLocked
       });
     }
@@ -131,39 +235,103 @@ const SweepstakesDetailContent = () => {
     }
   };
 
-  const handlePullDetailsChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setPullDetails(e.target.value);
-    
-    // Validate JSON as user types
-    if (!e.target.value.trim()) {
-      // Empty is valid
-      setIsDetailsJsonValid(true);
-      return;
+  // Handle changes for individual pull form fields
+  const handlePullRewardChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPullReward(e.target.value);
+  };
+  
+  const handlePullRankChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Only allow numeric values for rank
+    const value = e.target.value;
+    if (value === '' || /^\d+$/.test(value)) {
+      setPullRank(value);
     }
-    
-    try {
-      JSON.parse(e.target.value);
-      setIsDetailsJsonValid(true);
-    } catch (err) {
-      setIsDetailsJsonValid(false);
-    }
+  };
+  
+  const handlePullDescriptionChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setPullDescription(e.target.value);
   };
 
-  const handlePullWinner = async () => {
+  // Function to run progress bar for data refresh
+  const runProgressBar = useCallback(async (callback: () => Promise<void>) => {
+    setShowProgress(true);
+    setProgress(0);
+    
+    // Start progress bar animation
+    const startTime = Date.now();
+    const duration = 5000; // 5 seconds
+    
+    const updateProgress = () => {
+      const elapsed = Date.now() - startTime;
+      const newProgress = Math.min((elapsed / duration) * 100, 100);
+      setProgress(newProgress);
+      
+      if (elapsed < duration) {
+        requestAnimationFrame(updateProgress);
+      } else {
+        // When progress bar completes, call the callback function
+        callback().then(() => {
+          console.log('✅ Data refresh completed');
+          setShowProgress(false);
+        }).catch(error => {
+          console.error('❌ Error during data refresh:', error);
+          setShowProgress(false);
+        });
+      }
+    };
+    
+    requestAnimationFrame(updateProgress);
+  }, []);
+  
+  // Handler for pull winner button
+  const handlePullWinner = useCallback(async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault(); // Prevent form submission and page refresh
     setLocalError(null);
     
-    // Validate details if provided
-    if (pullDetails && !isDetailsJsonValid) {
-      setLocalError('Please provide valid JSON for pull details');
-      return;
+    console.log('🎲 Pull Winner button clicked');
+    
+    // Construct JSON object from individual fields
+    const detailsObj: Record<string, any> = {};
+    
+    if (pullReward.trim()) {
+      detailsObj.reward = pullReward.trim();
     }
     
+    if (pullRank.trim()) {
+      detailsObj.rank = parseInt(pullRank.trim(), 10);
+    }
+    
+    if (pullDescription.trim()) {
+      detailsObj.description = pullDescription.trim();
+    }
+    
+    // Convert object to JSON string and set pull details
+    const detailsJson = Object.keys(detailsObj).length > 0 ? JSON.stringify(detailsObj) : '';
+    console.log('📝 Constructed pull details JSON:', detailsJson);
+    
+    // Set the JSON string to context before calling pullWinner
+    setPullDetails(detailsJson);
+    
     try {
+      console.log('🔄 Calling pullWinner function');
       await pullWinner();
+      console.log('✅ Pull winner completed successfully');
+      
+      // Clear form fields after successful pull
+      setPullReward('');
+      setPullRank('');
+      setPullDescription('');
+      
+      // Start the progress bar for data refresh
+      runProgressBar(async () => {
+        console.log('🔄 Refreshing pulls data after pull winner...');
+        await refreshPulls();
+      });
     } catch (err) {
+      console.error('❌ Pull winner error:', err);
       setLocalError(err instanceof Error ? err.message : 'Failed to pull winner');
     }
-  };
+  }, [pullReward, pullRank, pullDescription, pullWinner, refreshPulls, runProgressBar]);
 
   // Parse details JSON into object
   const parseDetails = (jsonString: string | null | undefined) => {
@@ -345,27 +513,55 @@ const SweepstakesDetailContent = () => {
           {isOwner && !isListLocked && (
             <div className="pull-section">
               <h2>Pull a Winner</h2>
-              <div className="form-group">
-                <label htmlFor="pullDetails">Details JSON (optional):</label>
-                <textarea
-                  id="pullDetails"
-                  value={pullDetails}
-                  onChange={handlePullDetailsChange}
-                  placeholder={'Enter details as JSON object, e.g. {"place": "1st", "prize": "$100"}'}
-                  className={`json-input ${!isDetailsJsonValid && pullDetails ? 'invalid' : ''}`}
-                  rows={4}
-                />
-                {!isDetailsJsonValid && pullDetails && (
-                  <div className="validation-error">Please enter valid JSON</div>
-                )}
-              </div>
-              <button 
-                onClick={handlePullWinner}
-                disabled={isLoading || (pullDetails && !isDetailsJsonValid)}
-                className="pull-button"
-              >
-                Pull Winner
-              </button>
+              <form className="structured-form" onSubmit={(e) => e.preventDefault()}>
+                <div className="form-group">
+                  <label htmlFor="pullReward">Reward (optional):</label>
+                  <input
+                    id="pullReward"
+                    type="text"
+                    value={pullReward}
+                    onChange={handlePullRewardChange}
+                    placeholder="e.g. $100 Gift Card"
+                    className="form-input"
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label htmlFor="pullRank">Rank (optional):</label>
+                  <input
+                    id="pullRank"
+                    type="text"
+                    value={pullRank}
+                    onChange={handlePullRankChange}
+                    placeholder="e.g. 1 (for 1st place)"
+                    className="form-input"
+                  />
+                  <div className="help-text">
+                    <small>Enter a number value (e.g. 1 for 1st place)</small>
+                  </div>
+                </div>
+                
+                <div className="form-group">
+                  <label htmlFor="pullDescription">Description (optional):</label>
+                  <textarea
+                    id="pullDescription"
+                    value={pullDescription}
+                    onChange={handlePullDescriptionChange}
+                    placeholder="e.g. First Place Prize"
+                    className="form-input"
+                    rows={2}
+                  />
+                </div>
+                
+                <button 
+                  type="button" 
+                  onClick={handlePullWinner}
+                  disabled={isLoading}
+                  className="pull-button"
+                >
+                  Pull Winner
+                </button>
+              </form>
             </div>
           )}
         </div>
@@ -373,24 +569,21 @@ const SweepstakesDetailContent = () => {
         <div className="right-column">
           <div className="pulls-history-section">
             <h2>Pull History</h2>
-            {pulls.length === 0 ? (
-              <div className="no-pulls">No pulls have been made yet</div>
-            ) : (
-              <div className="pulls-container">
-                {pulls.map((pull, index) => (
-                  <div key={index} className="pull-item">
-                    <div className="pull-header">
-                      <div className="pull-winner">{pull.Winner || 'Unknown Winner'}</div>
-                      <div className="pull-id">Pull #{index + 1}</div>
-                    </div>
-                    {/* Display available information from the pull */}
-                    <div className="pull-details">
-                      <div>Details: {pull.Details || 'No details available'}</div>
-                    </div>
-                  </div>
-                ))}
+            {/* Render progress bar when visible */}
+            {showProgress && (
+              <div className="progress-bar-container">
+                <div className="progress-bar-label">Refreshing data...</div>
+                <div className="progress-bar">
+                  <div 
+                    className="progress-bar-fill" 
+                    style={{ width: `${progress}%` }}
+                  ></div>
+                </div>
               </div>
             )}
+            
+            {/* Render the memoized pulls display content */}
+            {pullsDisplayContent}
           </div>
         </div>
       </div>
