@@ -58,7 +58,7 @@ interface SweepstakesContextType {
   setSweepstakesDetails: (details: string) => void;
   registerSweepstakes: () => Promise<string | null>;
   updateEntrants: (entrantsList?: string[]) => Promise<boolean>;
-  pullWinner: () => Promise<boolean>;
+  pullWinner: (details?: string) => Promise<boolean>;
   addEntrant: (entrant: string) => Promise<boolean>;
   refreshPulls: () => Promise<void>;
   loadEntrants: () => Promise<void>;
@@ -732,7 +732,7 @@ export const SweepstakesProvider = ({ children, config }: SweepstakesProviderPro
     }
   };
 
-  const pullWinner = async (): Promise<boolean> => {
+  const pullWinner = async (detailsParam?: string): Promise<boolean> => {
     if (!client) {
       setError('Client not initialized or wallet not connected');
       return false;
@@ -746,8 +746,8 @@ export const SweepstakesProvider = ({ children, config }: SweepstakesProviderPro
     try {
       setIsLoading(true);
 
-      // Get the optional details JSON if provided
-      const details = pullDetails ? pullDetails.trim() : '';
+      // Use the provided details parameter if available, otherwise fall back to state
+      const details = detailsParam !== undefined ? detailsParam.trim() : (pullDetails ? pullDetails.trim() : '');
       console.log('Pull details to be sent:', { details });
 
       // Perform the pull for the current sweepstakes with the details

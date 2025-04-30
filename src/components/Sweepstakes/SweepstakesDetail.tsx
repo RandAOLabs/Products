@@ -16,16 +16,27 @@ const SweepstakesDetailContent = () => {
     error,
     addEntrant,
     entrants,
-    pulls,
+    pulls: contextPulls, // Rename to avoid conflicting with local state
     newEntrantText,
     setNewEntrantText,
     pullDetails,
     setPullDetails,
     pullWinner,
-    refreshPulls, // Add the refreshPulls function
+    refreshPulls,
     client,
-    isClientReady // Use the new client ready state
+    isClientReady
   } = useSweepstakes();
+  
+  // Create local state for pulls that can be updated independently
+  // Initialize with pulls from context
+  const [pulls, setPulls] = useState(contextPulls);
+  
+  // Keep local pulls in sync with context pulls when they change
+  useEffect(() => {
+    if (contextPulls && contextPulls.length > 0) {
+      setPulls(contextPulls);
+    }
+  }, [contextPulls]);
   
   const { sweepstakesId } = useParams<{ sweepstakesId: string }>();
   const [localError, setLocalError] = useState<string | null>(null);
@@ -34,8 +45,161 @@ const SweepstakesDetailContent = () => {
   const [pullDescription, setPullDescription] = useState<string>('');
   const [isOwner, setIsOwner] = useState(false);
   const didInitialRefresh = useRef<boolean>(false); // Track if we've done the initial refresh
-  const [progress, setProgress] = useState<number>(0); // For progress bar
-  const [showProgress, setShowProgress] = useState<boolean>(false); // Toggle progress bar visibility
+  // Progress bar state removed - using inline loading spinners for each pull instead
+  
+  // Reference to store the current interval ID for cleanup
+  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // Track if we just did a pull to stop auto-refresh after one cycle
+  const justPulledRef = useRef<boolean>(false);
+  
+  // Function to seamlessly fetch the latest pull data without disrupting UI
+  const fetchLatestPullData = useCallback(async () => {
+    if (!currentSweepstakesId || !client || !isClientReady) return;
+    
+    try {
+      console.log('🔍 Fetching latest pull data...');
+      
+      // Get the latest data
+      const sweepstakesResponse = await client.viewSweepstakes(currentSweepstakesId);
+      
+      if (!sweepstakesResponse) {
+        console.log('❌ No data returned from fetch');
+        return;
+      }
+      
+      let newPulls = [];
+      
+      // Check if we have pull data
+      if (sweepstakesResponse.Pulls && Array.isArray(sweepstakesResponse.Pulls)) {
+        console.log('✅ Got new pull data:', sweepstakesResponse.Pulls);
+        
+        // Format new pulls for consistency
+        newPulls = sweepstakesResponse.Pulls.map((pull, index) => ({
+          ...pull,
+          Id: pull.Id || index.toString(),
+          Winner: pull.Winner || ''
+        }));
+      } else if (typeof sweepstakesResponse.PullCount === 'number' && sweepstakesResponse.PullCount > 0) {
+        // Fetch each pull individually if we have a count but no array
+        console.log(`🔄 Fetching ${sweepstakesResponse.PullCount} individual pulls`);
+        
+        for (let i = 0; i < sweepstakesResponse.PullCount; i++) {
+          try {
+            const pullResponse = await client.viewSweepstakesPull(currentSweepstakesId, i.toString());
+            
+            if (pullResponse) {
+              newPulls.push({
+                Id: i.toString(),
+                Winner: pullResponse.Winner || '',
+                Details: pullResponse.Details || ''
+              });
+            }
+          } catch (err) {
+            console.error(`Error fetching pull ${i}:`, err);
+          }
+        }
+      }
+      
+      // Only update if we have data and it's different from what we have
+      if (newPulls.length > 0) {
+        // Create a map of current pulls for quick lookup
+        const currentPullsMap = {};
+        pulls.forEach(pull => {
+          if (pull.Id) {
+            currentPullsMap[pull.Id] = pull;
+          }
+        });
+        
+        // Create merged pulls array that preserves existing data until new data arrives
+        const mergedPulls = newPulls.map(newPull => {
+          const pullId = newPull.Id?.toString() || '';
+          const existingPull = currentPullsMap[pullId];
+          
+          // If this pull exists and the new pull doesn't have a winner, preserve existing data
+          if (existingPull && !newPull.Winner) {
+            return existingPull;
+          }
+          
+          return newPull;
+        });
+        
+        console.log('✅ Setting merged pulls data:', mergedPulls);
+        setPulls(mergedPulls);
+        
+        // Check if all pulls have winners now
+        const hasPendingPulls = mergedPulls.some(pull => !pull.Winner);
+        
+        // If we just performed a pull and there are no pending pulls, stop refreshing
+        if (justPulledRef.current && !hasPendingPulls) {
+          console.log('✅ Pull completed with winner, stopping refresh');
+          justPulledRef.current = false;
+          
+          if (refreshIntervalRef.current) {
+            clearInterval(refreshIntervalRef.current);
+            refreshIntervalRef.current = null;
+          }
+        }
+        // If we have no pending pulls at all, stop refreshing
+        else if (!hasPendingPulls && refreshIntervalRef.current) {
+          console.log('✅ All pulls resolved, stopping auto-refresh');
+          clearInterval(refreshIntervalRef.current);
+          refreshIntervalRef.current = null;
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching latest pull data:', err);
+    }
+  }, [currentSweepstakesId, client, isClientReady, pulls]);
+  
+  // Calculate which pulls are pending (don't have a winner yet)
+  const pendingPullIds = useMemo(() => {
+    const pendingIds = {};
+    
+    // Check pulls from context
+    pulls.forEach((pull, index) => {
+      if (!pull.Winner) {
+        const pullId = pull.Id?.toString() || index.toString();
+        pendingIds[pullId] = true;
+      }
+    });
+    
+    // Also check pulls from sweepstakesData if available
+    if (sweepstakesData?.Pulls) {
+      sweepstakesData.Pulls.forEach((pull, index) => {
+        if (!pull.Winner) {
+          const pullId = pull.Id?.toString() || index.toString();
+          pendingIds[pullId] = true;
+        }
+      });
+    }
+    
+    return pendingIds;
+  }, [pulls, sweepstakesData?.Pulls]);
+  
+  // Start/stop auto-refresh based on pending pulls
+  useEffect(() => {
+    const hasPendingPulls = Object.keys(pendingPullIds).length > 0;
+    
+    // If we have pending pulls but no interval is running, start one
+    if (hasPendingPulls && !refreshIntervalRef.current) {
+      console.log('🔄 Starting auto-refresh for pending pulls:', pendingPullIds);
+      refreshIntervalRef.current = setInterval(fetchLatestPullData, 1000);
+    } 
+    // If we have no pending pulls but an interval is running, stop it
+    else if (!hasPendingPulls && refreshIntervalRef.current) {
+      console.log('✅ No more pending pulls, stopping auto-refresh');
+      clearInterval(refreshIntervalRef.current);
+      refreshIntervalRef.current = null;
+    }
+    
+    // Cleanup on unmount
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+    };
+  }, [pendingPullIds, fetchLatestPullData]);
   
   // Memoized pulls display logic - moved to top level to comply with Rules of Hooks
   const pullsDisplayContent = useMemo(() => {
@@ -67,11 +231,22 @@ const SweepstakesDetailContent = () => {
           } catch (e) {
             // Keep parsedDetails as null if parsing fails
           }
+          
+          // Get pull ID consistently for checking pending status
+          const pullId = pull.Id?.toString() || index.toString();
+          const isPending = !pull.Winner || pendingPullIds[pullId];
                                   
           return (
             <div key={index} className="pull-item">
               <div className="pull-header">
-                <div className="pull-winner">{pull.Winner || 'Unknown Winner'}</div>
+                {!pull.Winner || pull.Winner === '' ? (
+                  <div className="pull-winner pending">
+                    <span className="loading-spinner"></span>
+                    <span className="loading-text">Selecting winner...</span>
+                  </div>
+                ) : (
+                  <div className="pull-winner">{pull.Winner}</div>
+                )}
                 <div className="pull-id">Pull #{index + 1}</div>
               </div>
               {/* Display available information from the pull */}
@@ -117,7 +292,7 @@ const SweepstakesDetailContent = () => {
         })}
       </div>
     );
-  }, [pulls, sweepstakesData?.Pulls]); // Only re-render when pulls or sweepstakesData.Pulls change
+  }, [pulls, sweepstakesData?.Pulls, pendingPullIds]); // Include pendingPulls in dependencies
   
   // Load sweepstakes data when component mounts
   useEffect(() => {
@@ -252,41 +427,24 @@ const SweepstakesDetailContent = () => {
     setPullDescription(e.target.value);
   };
 
-  // Function to run progress bar for data refresh
-  const runProgressBar = useCallback(async (callback: () => Promise<void>) => {
-    setShowProgress(true);
-    setProgress(0);
-    
-    // Start progress bar animation
-    const startTime = Date.now();
-    const duration = 5000; // 5 seconds
-    
-    const updateProgress = () => {
-      const elapsed = Date.now() - startTime;
-      const newProgress = Math.min((elapsed / duration) * 100, 100);
-      setProgress(newProgress);
-      
-      if (elapsed < duration) {
-        requestAnimationFrame(updateProgress);
-      } else {
-        // When progress bar completes, call the callback function
-        callback().then(() => {
-          console.log('✅ Data refresh completed');
-          setShowProgress(false);
-        }).catch(error => {
-          console.error('❌ Error during data refresh:', error);
-          setShowProgress(false);
-        });
-      }
-    };
-    
-    requestAnimationFrame(updateProgress);
-  }, []);
+  // Progress bar function removed - now using inline loading spinners for each pull
+  
+  // Create a ref for the pull button to safely access it
+  const pullButtonRef = useRef<HTMLButtonElement | null>(null);
+  
+  // State to track if a pull is in progress
+  const [isPulling, setIsPulling] = useState(false);
   
   // Handler for pull winner button
   const handlePullWinner = useCallback(async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault(); // Prevent form submission and page refresh
     setLocalError(null);
+    
+    // Record the button reference to avoid null errors when updating disabled state
+    pullButtonRef.current = e.currentTarget;
+    
+    // Track that we're in the process of pulling
+    setIsPulling(true);
     
     console.log('🎲 Pull Winner button clicked');
     
@@ -305,33 +463,64 @@ const SweepstakesDetailContent = () => {
       detailsObj.description = pullDescription.trim();
     }
     
-    // Convert object to JSON string and set pull details
+    // Convert object to JSON string
     const detailsJson = Object.keys(detailsObj).length > 0 ? JSON.stringify(detailsObj) : '';
     console.log('📝 Constructed pull details JSON:', detailsJson);
     
-    // Set the JSON string to context before calling pullWinner
-    setPullDetails(detailsJson);
-    
     try {
-      console.log('🔄 Calling pullWinner function');
-      await pullWinner();
-      console.log('✅ Pull winner completed successfully');
+      // First, add an optimistic placeholder for the new pull with a spinner
+      const newPullId = Math.random().toString(36).substring(2, 9); // Generate temporary unique ID
+      const optimisticPull = {
+        Id: newPullId,
+        Details: detailsJson,
+        Winner: '', // Empty winner triggers the spinner
+        isOptimistic: true // Mark this as an optimistic update
+      };
+      
+      // Add optimistic pull to the UI immediately
+      setPulls(prevPulls => [optimisticPull, ...prevPulls]);
+      
+      // Submit the pull request to the API
+      console.log('🔄 Calling pullWinner function with details:', detailsJson);
+      await pullWinner(detailsJson);
+      console.log('✅ Pull winner request sent successfully');
       
       // Clear form fields after successful pull
       setPullReward('');
       setPullRank('');
       setPullDescription('');
       
-      // Start the progress bar for data refresh
-      runProgressBar(async () => {
-        console.log('🔄 Refreshing pulls data after pull winner...');
-        await refreshPulls();
-      });
+      // Mark that we just did a pull so we can stop refreshing after one cycle if needed
+      justPulledRef.current = true;
+      
+      // Wait exactly 1 second as requested
+      console.log('⏱️ Waiting 1 second before scroll and refresh...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Scroll to the top of the page (smoother experience)
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      
+      // Do a single refresh to get updated data
+      console.log('🔄 Performing single refresh after 1 second...');
+      await fetchLatestPullData();
+      
+      // Start auto-refresh only if there are still pulls without winners
+      const pullsWithoutWinners = pulls.some(pull => !pull.Winner);
+      if (pullsWithoutWinners && !refreshIntervalRef.current) {
+        console.log('🔄 Starting auto-refresh for pending pulls');
+        refreshIntervalRef.current = setInterval(fetchLatestPullData, 1000);
+      }
     } catch (err) {
       console.error('❌ Pull winner error:', err);
       setLocalError(err instanceof Error ? err.message : 'Failed to pull winner');
+      
+      // Remove optimistic pull on error
+      setPulls(prevPulls => prevPulls.filter(pull => !pull.isOptimistic));
+    } finally {
+      // Always reset the pull state when done
+      setIsPulling(false);
     }
-  }, [pullReward, pullRank, pullDescription, pullWinner, refreshPulls, runProgressBar]);
+  }, [pullReward, pullRank, pullDescription, pullWinner, pulls, fetchLatestPullData]);
 
   // Parse details JSON into object
   const parseDetails = (jsonString: string | null | undefined) => {
@@ -569,18 +758,7 @@ const SweepstakesDetailContent = () => {
         <div className="right-column">
           <div className="pulls-history-section">
             <h2>Pull History</h2>
-            {/* Render progress bar when visible */}
-            {showProgress && (
-              <div className="progress-bar-container">
-                <div className="progress-bar-label">Refreshing data...</div>
-                <div className="progress-bar">
-                  <div 
-                    className="progress-bar-fill" 
-                    style={{ width: `${progress}%` }}
-                  ></div>
-                </div>
-              </div>
-            )}
+            {/* Progress bar removed - now using inline spinner for each pending pull */}
             
             {/* Render the memoized pulls display content */}
             {pullsDisplayContent}

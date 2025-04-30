@@ -48,7 +48,6 @@ const SweepstakesHomeContent = () => {
     prize: '',
     endDate: '',
     rules: '',
-    maxEntrants: ''
   });
 
   // Load sweepstakes on component mount if wallet is connected
@@ -191,8 +190,7 @@ const SweepstakesHomeContent = () => {
       description: sweepstakesForm.description,
       prize: sweepstakesForm.prize,
       endDate: sweepstakesForm.endDate,
-      rules: sweepstakesForm.rules,
-      maxEntrants: sweepstakesForm.maxEntrants ? parseInt(sweepstakesForm.maxEntrants) : undefined
+      rules: sweepstakesForm.rules
     });
     
     // Update the sweepstakesDetails in the context
@@ -292,7 +290,7 @@ const SweepstakesHomeContent = () => {
       </div>
       
       {/* Filter options DO NOT REMOVE */}
-      {/* <div className="filter-options">
+      <div className="filter-options">
         <label className="checkbox-label">
           <input 
             type="checkbox" 
@@ -306,7 +304,7 @@ const SweepstakesHomeContent = () => {
             ? 'Showing all sweepstakes, including those without name or description.' 
             : 'Hiding sweepstakes that are missing name or description.'}
         </p>
-      </div> */}
+      </div>
 
       {/* User's Sweepstakes section */}
       {isConnected && (
@@ -443,18 +441,6 @@ const SweepstakesHomeContent = () => {
                     className="form-input"
                     rows={3}
                     placeholder="Rules for the sweepstakes (optional)"
-                  />
-                </div>
-                <div className="form-field">
-                  <label>Max Entrants:</label>
-                  <input 
-                    type="number" 
-                    name="maxEntrants" 
-                    value={sweepstakesForm.maxEntrants} 
-                    onChange={handleFormChange} 
-                    className="form-input"
-                    placeholder="Maximum number of entrants (optional)"
-                    min="1"
                   />
                 </div>
               </div>
