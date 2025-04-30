@@ -344,6 +344,28 @@
   border: 1px solid var(--border-color);
   border-radius: 8px;
   overflow: hidden;
+  transition: all 0.3s ease-in-out;
+}
+
+/* Styling for optimistic updates */
+.pull-item.optimistic {
+  border-color: var(--accent-info-text);
+  box-shadow: 0 0 8px rgba(var(--accent-primary-rgb), 0.4);
+}
+
+/* Styling for pending pulls */
+.pull-item.pending {
+  background-color: var(--surface-alt-color);
+}
+
+/* Styling for transitioning pulls */
+.pull-item.transitioning {
+  animation: highlight-transition 1.5s ease-in-out;
+}
+
+@keyframes highlight-transition {
+  0% { background-color: var(--accent-info-bg); }
+  100% { background-color: transparent; }
 }
 
 .pull-header {
@@ -357,6 +379,18 @@
 .pull-winner {
   font-weight: bold;
   font-size: 1.1rem;
+  transition: all 0.3s ease-in-out;
+}
+
+.pull-winner.winner-transition {
+  animation: winner-appear 0.8s ease-in-out;
+  color: var(--accent-success);
+}
+
+@keyframes winner-appear {
+  0% { opacity: 0; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.1); }
+  100% { opacity: 1; transform: scale(1); }
 }
 
 .pull-winner.pending {

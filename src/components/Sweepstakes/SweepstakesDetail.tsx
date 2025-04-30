@@ -77,7 +77,8 @@ const SweepstakesDetailContent = () => {
         newPulls = sweepstakesResponse.Pulls.map((pull, index) => ({
           ...pull,
           Id: pull.Id || index.toString(),
-          Winner: pull.Winner || ''
+          // Ensure Winner is ALWAYS either a non-empty string or an empty string (never 'Unknown')
+          Winner: (pull.Winner && pull.Winner !== 'Unknown') ? pull.Winner : ''
         }));
       } else if (typeof sweepstakesResponse.PullCount === 'number' && sweepstakesResponse.PullCount > 0) {
         // Fetch each pull individually if we have a count but no array
@@ -90,7 +91,8 @@ const SweepstakesDetailContent = () => {
             if (pullResponse) {
               newPulls.push({
                 Id: i.toString(),
-                Winner: pullResponse.Winner || '',
+                // Ensure Winner is ALWAYS either a non-empty string or an empty string (never 'Unknown')
+                Winner: (pullResponse.Winner && pullResponse.Winner !== 'Unknown') ? pullResponse.Winner : '',
                 Details: pullResponse.Details || ''
               });
             }
@@ -100,27 +102,52 @@ const SweepstakesDetailContent = () => {
         }
       }
       
-      // Only update if we have data and it's different from what we have
+      // Only update if we have data
       if (newPulls.length > 0) {
         // Create a map of current pulls for quick lookup
-        const currentPullsMap = {};
+        const currentPullsMap: Record<string, any> = {};
         pulls.forEach(pull => {
           if (pull.Id) {
             currentPullsMap[pull.Id] = pull;
           }
         });
         
+        // Create an optimistic pull map to identify optimistic updates
+        const optimisticPulls = pulls.filter(pull => pull.isOptimistic).reduce((acc: Record<string, boolean>, pull) => {
+          if (pull.Id) {
+            acc[pull.Id] = true;
+          }
+          return acc;
+        }, {});
+        
         // Create merged pulls array that preserves existing data until new data arrives
         const mergedPulls = newPulls.map(newPull => {
           const pullId = newPull.Id?.toString() || '';
           const existingPull = currentPullsMap[pullId];
           
-          // If this pull exists and the new pull doesn't have a winner, preserve existing data
-          if (existingPull && !newPull.Winner) {
+          // If this is an optimistic pull that's being updated with real data
+          if (existingPull && optimisticPulls[pullId] && newPull.Winner) {
+            return {
+              ...newPull,
+              isOptimistic: false, // No longer optimistic once we have the winner
+              transitioningWinner: true, // Add a flag to animate the transition if needed
+            };
+          }
+          
+          // If this pull exists and the new pull doesn't have meaningful updates, preserve existing data
+          if (existingPull && (!newPull.Winner || newPull.Winner === existingPull.Winner)) {
             return existingPull;
           }
           
-          return newPull;
+          // For normal pulls with new data, update while preserving any UI state properties
+          return {
+            ...newPull,
+            // Preserve any UI state flags from existing pull
+            ...(existingPull ? { 
+              isExpanded: existingPull.isExpanded,
+              isHighlighted: existingPull.isHighlighted
+            } : {})
+          };
         });
         
         console.log('✅ Setting merged pulls data:', mergedPulls);
@@ -203,12 +230,11 @@ const SweepstakesDetailContent = () => {
   
   // Memoized pulls display logic - moved to top level to comply with Rules of Hooks
   const pullsDisplayContent = useMemo(() => {
-    // Use pulls from context state first
+    // Use pulls from local state first which maintains data during refreshes
     let availablePulls = pulls || [];
     
-    // If no pulls in context but they exist in sweepstakesData, use those
+    // If no pulls in local state but they exist in sweepstakesData, use those as fallback
     if (availablePulls.length === 0 && sweepstakesData?.Pulls && sweepstakesData.Pulls.length > 0) {
-      // Only log this once when the component renders, not on every input change
       if (process.env.NODE_ENV !== 'production') {
         console.log('🔄 Using pulls from sweepstakesData directly for display');
       }
@@ -219,9 +245,26 @@ const SweepstakesDetailContent = () => {
       return <div className="no-pulls">No pulls have been made yet</div>;
     }
     
+    // Sort pulls - newest first, but ensure optimistic pulls stay at the top
+    const sortedPulls = [...availablePulls].sort((a, b) => {
+      // Always show optimistic/pending pulls first
+      if (a.isOptimistic && !b.isOptimistic) return -1;
+      if (!a.isOptimistic && b.isOptimistic) return 1;
+      
+      // If both are optimistic or both are not, sort by timestamp or ID
+      if (a.timestamp && b.timestamp) {
+        return b.timestamp - a.timestamp; // Newest first
+      }
+      
+      // Fallback to ID-based sorting
+      const aId = parseInt(a.Id?.toString() || '0', 10);
+      const bId = parseInt(b.Id?.toString() || '0', 10);
+      return aId - bId; // Usually newest pulls have higher IDs
+    });
+    
     return (
       <div className="pulls-container">
-        {availablePulls.map((pull, index) => {
+        {sortedPulls.map((pull, index) => {
           // Try to parse details if they exist
           let parsedDetails = null;
           try {
@@ -235,17 +278,29 @@ const SweepstakesDetailContent = () => {
           // Get pull ID consistently for checking pending status
           const pullId = pull.Id?.toString() || index.toString();
           const isPending = !pull.Winner || pendingPullIds[pullId];
-                                  
+          const isOptimistic = !!pull.isOptimistic;
+          const isTransitioning = !!pull.transitioningWinner;
+          
+          // Determine appropriate CSS classes for the pull item
+          const pullItemClasses = [
+            'pull-item',
+            isOptimistic ? 'optimistic' : '',
+            isPending ? 'pending' : '',
+            isTransitioning ? 'transitioning' : ''
+          ].filter(Boolean).join(' ');
+          
           return (
-            <div key={index} className="pull-item">
+            <div key={`${pullId}-${index}`} className={pullItemClasses}>
               <div className="pull-header">
-                {!pull.Winner || pull.Winner === '' ? (
+                {!pull.Winner || pull.Winner === '' || pull.Winner === 'Unknown' ? (
                   <div className="pull-winner pending">
                     <span className="loading-spinner"></span>
                     <span className="loading-text">Selecting winner...</span>
                   </div>
                 ) : (
-                  <div className="pull-winner">{pull.Winner}</div>
+                  <div className={`pull-winner ${isTransitioning ? 'winner-transition' : ''}`}>
+                    {pull.Winner}
+                  </div>
                 )}
                 <div className="pull-id">Pull #{index + 1}</div>
               </div>
@@ -443,8 +498,9 @@ const SweepstakesDetailContent = () => {
     // Record the button reference to avoid null errors when updating disabled state
     pullButtonRef.current = e.currentTarget;
     
-    // Track that we're in the process of pulling
+    // Disable the button and track that we're in the process of pulling
     setIsPulling(true);
+    e.currentTarget.disabled = true;
     
     console.log('🎲 Pull Winner button clicked');
     
@@ -468,16 +524,20 @@ const SweepstakesDetailContent = () => {
     console.log('📝 Constructed pull details JSON:', detailsJson);
     
     try {
-      // First, add an optimistic placeholder for the new pull with a spinner
-      const newPullId = Math.random().toString(36).substring(2, 9); // Generate temporary unique ID
+      // Generate a unique ID for this optimistic pull
+      const newPullId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      
+      // Create an optimistic pull with a pending state
       const optimisticPull = {
         Id: newPullId,
         Details: detailsJson,
         Winner: '', // Empty winner triggers the spinner
-        isOptimistic: true // Mark this as an optimistic update
+        isOptimistic: true, // Mark this as an optimistic update
+        isPending: true, // Track pending state explicitly
+        timestamp: Date.now() // Add timestamp for sorting/tracking
       };
       
-      // Add optimistic pull to the UI immediately
+      // Add optimistic pull to the UI immediately at the top
       setPulls(prevPulls => [optimisticPull, ...prevPulls]);
       
       // Submit the pull request to the API
@@ -490,26 +550,30 @@ const SweepstakesDetailContent = () => {
       setPullRank('');
       setPullDescription('');
       
-      // Mark that we just did a pull so we can stop refreshing after one cycle if needed
+      // Mark that we just did a pull so we can handle refresh state appropriately
       justPulledRef.current = true;
       
-      // Wait exactly 1 second as requested
-      console.log('⏱️ Waiting 1 second before scroll and refresh...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Set a brief timeout to allow UI to update before refreshing
+      console.log('⏱️ Waiting briefly before refreshing pull data...');
+      await new Promise(resolve => setTimeout(resolve, 300));
       
-      // Scroll to the top of the page (smoother experience)
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      
-      // Do a single refresh to get updated data
-      console.log('🔄 Performing single refresh after 1 second...');
+      // Do a single refresh to get updated data - this will maintain current UI state
+      console.log('🔄 Performing refresh to get real winner data...');
       await fetchLatestPullData();
       
-      // Start auto-refresh only if there are still pulls without winners
-      const pullsWithoutWinners = pulls.some(pull => !pull.Winner);
-      if (pullsWithoutWinners && !refreshIntervalRef.current) {
+      // Start auto-refresh if there are still pulls without winners
+      if (!refreshIntervalRef.current) {
         console.log('🔄 Starting auto-refresh for pending pulls');
         refreshIntervalRef.current = setInterval(fetchLatestPullData, 1000);
       }
+      
+      // Optional: Scroll smoothly to the top pull after a moment
+      setTimeout(() => {
+        const firstPullElement = document.querySelector('.pull-item');
+        if (firstPullElement) {
+          firstPullElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }, 500);
     } catch (err) {
       console.error('❌ Pull winner error:', err);
       setLocalError(err instanceof Error ? err.message : 'Failed to pull winner');
@@ -519,6 +583,11 @@ const SweepstakesDetailContent = () => {
     } finally {
       // Always reset the pull state when done
       setIsPulling(false);
+      
+      // Re-enable the button if it exists
+      if (pullButtonRef.current) {
+        pullButtonRef.current.disabled = false;
+      }
     }
   }, [pullReward, pullRank, pullDescription, pullWinner, pulls, fetchLatestPullData]);
 
