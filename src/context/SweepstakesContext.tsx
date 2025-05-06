@@ -64,6 +64,7 @@ interface SweepstakesContextType {
   loadEntrants: () => Promise<void>;
   loadAllSweepstakes: () => Promise<void>;
   getSweepstakesById: (id: string) => Promise<boolean>;
+  getCreatorProfile: (address: string) => Promise<any>;
 }
 
 // Default context values
@@ -96,6 +97,7 @@ const defaultContextValue: SweepstakesContextType = {
   loadEntrants: async () => {},
   loadAllSweepstakes: async () => {},
   getSweepstakesById: async () => false,
+  getCreatorProfile: async () => ({}),
 };
 
 // Create the context
@@ -871,6 +873,43 @@ export const SweepstakesProvider = ({ children, config }: SweepstakesProviderPro
       setIsLoading(false);
     }
   };
+  
+  // Fetch creator profile data from the profiles service
+  const getCreatorProfile = async (address: string): Promise<any> => {
+    if (!client) {
+      console.error('Client not initialized for profile lookup');
+      return {};
+    }
+    
+    try {
+      // Use a type assertion to access potential methods
+      const anyClient = client as any;
+      
+      // First attempt - check if there's a getProfile method
+      if (typeof anyClient.getProfile === 'function') {
+        console.log('Using client.getProfile to fetch creator profile for', address);
+        return await anyClient.getProfile(address);
+      }
+      
+      // Second attempt - check if there's a profileClient with a getProfile method
+      if (anyClient.profileClient && typeof anyClient.profileClient.getProfile === 'function') {
+        console.log('Using client.profileClient to fetch creator profile for', address);
+        return await anyClient.profileClient.getProfile(address);
+      }
+      
+      // Third attempt - check if there's a callProcess method
+      if (typeof anyClient.callProcess === 'function') {
+        console.log('Using callProcess method to fetch creator profile for', address);
+        return await anyClient.callProcess('getProfile', { address });
+      }
+      
+      console.warn('No profile lookup methods available for address:', address);
+      return {};
+    } catch (err) {
+      console.error('Error fetching creator profile:', err);
+      return {};
+    }
+  };
 
   // Context value
   const value = {
@@ -902,6 +941,7 @@ export const SweepstakesProvider = ({ children, config }: SweepstakesProviderPro
     loadEntrants,
     loadAllSweepstakes,
     getSweepstakesById,
+    getCreatorProfile,
   };
 
   return (

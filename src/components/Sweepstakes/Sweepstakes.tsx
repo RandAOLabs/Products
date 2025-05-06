@@ -17,7 +17,7 @@ export const Sweepstakes = () => {
         
         <div className="sweepstakes-content">
           <div className="left-column">
-            <EntrantsForm />
+            <EntrantsForm mode="update" />
             <SweepstakesControls />
           </div>
           
