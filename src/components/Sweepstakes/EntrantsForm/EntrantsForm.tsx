@@ -9,6 +9,7 @@ interface EntrantsFormProps {
   initialEntrants?: string[];
   title?: string;
   buttonText?: string;
+  disabled?: boolean;
 }
 
 export const EntrantsForm = ({
@@ -17,7 +18,8 @@ export const EntrantsForm = ({
   onSubmit,
   initialEntrants = [],
   title = 'Entrants List',
-  buttonText = mode === 'create' ? 'Create Sweepstakes' : 'Update List'
+  buttonText = mode === 'create' ? 'Create Sweepstakes' : 'Update List',
+  disabled = false
 }: EntrantsFormProps) => {
   const { 
     entrants, 
@@ -37,16 +39,35 @@ export const EntrantsForm = ({
 
   // Initialize form based on initialEntrants or context entrants
   useEffect(() => {
+    console.log('EntrantsForm initializing with:', {
+      mode,
+      initialEntrantsLength: initialEntrants?.length,
+      contextEntrantsLength: entrants?.length,
+      entrants
+    });
+    
     // For create mode, prioritize initialEntrants passed as props
-    // For update mode, prioritize context entrants if no initialEntrants provided
     if (mode === 'create' && initialEntrants.length > 0) {
+      console.log('Setting entrants from initialEntrants (create mode)');
       setInputText(initialEntrants.join('\n'));
       setParsedEntrants(initialEntrants);
-    } else if (mode === 'update' && entrants.length > 0) {
+    } 
+    // For update mode, always use the latest context entrants
+    else if (mode === 'update' && entrants.length > 0) {
+      console.log('Setting entrants from context (update mode)');
       setInputText(entrants.join('\n'));
       setParsedEntrants(entrants);
     }
   }, [mode, initialEntrants, entrants]);
+  
+  // Force refresh of form input when entrants change in update mode
+  useEffect(() => {
+    if (mode === 'update' && entrants.length > 0) {
+      console.log('Refreshing form with updated entrants from context');
+      setInputText(entrants.join('\n'));
+      setParsedEntrants(entrants);
+    }
+  }, [entrants, mode]);
 
   // Parse input text to get entrants list
   const parseInput = (text: string): string[] => {
@@ -111,8 +132,9 @@ export const EntrantsForm = ({
       .map(item => item.trim())
       .filter(item => item.length > 0);
     
-    // Remove duplicates
-    return [...new Set(cleanedEntries)];
+    // ALLOW DUPLICATES: Do not convert to Set, return the array as is
+    console.log('Parsed entrants with duplicates allowed:', cleanedEntries);
+    return cleanedEntries;
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -121,10 +143,14 @@ export const EntrantsForm = ({
     const newEntrants = parseInput(newText);
     setParsedEntrants(newEntrants);
     
-    // If in create mode or an onChange handler is provided, call it
+    // In create mode, use the onEntrantsChange callback
+    // In update mode, directly update the local state (will be sent on submit)
     if (onEntrantsChange) {
+      console.log('Calling onEntrantsChange with:', newEntrants.length, 'entrants');
       onEntrantsChange(newEntrants);
     }
+    
+    console.log('Input text updated, new parsed entrants:', newEntrants.length);
   };
 
   const handleSubmit = async () => {
@@ -146,33 +172,49 @@ export const EntrantsForm = ({
     
     // If in create mode and an onSubmit handler is provided, call it
     if (mode === 'create' && onSubmit) {
-      // For create mode, we'll just pass the entrants to the parent
-      // which will handle creating the sweepstakes
-      onSubmit();
+      // For create mode, we'll ensure the entrants are updated in context first
+      if (onEntrantsChange) {
+        console.log('Updating entrants before submitting:', newEntrants);
+        onEntrantsChange(newEntrants);
+      }
+      
+      // Adding a small delay to ensure context is updated before submission
+      setTimeout(() => {
+        console.log('Now submitting with entrants in context');
+        // For create mode, we'll just pass the entrants to the parent
+        // which will handle creating the sweepstakes
+        onSubmit();
+      }, 100);
       return;
     }
     
     // For update mode, proceed with updating entrants
     if (mode === 'update') {
       try {
-        console.log('Before update operation:', { 
+        console.log('Update mode - submitting entrants:', { 
           parsedEntrants: newEntrants,
-          contextEntrants: entrants
+          contextEntrants: entrants,
+          isDifferent: JSON.stringify(newEntrants) !== JSON.stringify(entrants)
         });
         
         // Pass the parsed entrants directly to the updateEntrants function
-        await updateEntrants(newEntrants);
-        console.log('After updateEntrants call with direct list');
+        const result = await updateEntrants(newEntrants);
+        console.log('After updateEntrants call, result:', result);
         
         // After successful update, reload the entrants from the server
         await loadEntrants();
-        console.log('After loadEntrants call, current entrants:', entrants);
+        console.log('After loadEntrants call, current entrants length:', entrants.length);
+        
+        // Force update the input text to match the loaded entrants
+        setInputText(entrants.join('\n'));
+        setParsedEntrants(entrants);
         
         setNotification({ 
           message: `Successfully updated ${newEntrants.length} entrants`, 
           type: 'success' 
         });
       } catch (err) {
+        console.error('Error updating entrants:', err);
         setNotification({ 
           message: 'Failed to update entrants', 
           type: 'error' 
@@ -223,7 +265,7 @@ export const EntrantsForm = ({
         
         <button 
           onClick={handleSubmit} 
-          disabled={isLoading || parsedEntrants.length === 0}
+          disabled={isLoading || parsedEntrants.length === 0 || disabled}
           className="update-button"
         >
           {isLoading ? (mode === 'create' ? 'Creating...' : 'Updating...') : buttonText}

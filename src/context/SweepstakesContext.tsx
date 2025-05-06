@@ -56,7 +56,7 @@ interface SweepstakesContextType {
   setNewEntrantText: (text: string) => void;
   setPullDetails: (details: string) => void;
   setSweepstakesDetails: (details: string) => void;
-  registerSweepstakes: () => Promise<string | null>;
+  registerSweepstakes: (detailsOverride?: string) => Promise<string | null>;
   updateEntrants: (entrantsList?: string[]) => Promise<boolean>;
   pullWinner: (details?: string) => Promise<boolean>;
   addEntrant: (entrant: string) => Promise<boolean>;
@@ -88,7 +88,7 @@ const defaultContextValue: SweepstakesContextType = {
   setNewEntrantText: () => {},
   setPullDetails: () => {},
   setSweepstakesDetails: () => {},
-  registerSweepstakes: async () => null,
+  registerSweepstakes: async (detailsOverride?: string) => null,
   updateEntrants: async () => false,
   pullWinner: async () => false,
   addEntrant: async () => false,
@@ -636,13 +636,22 @@ export const SweepstakesProvider = ({ children, config }: SweepstakesProviderPro
     }
   };
 
-  const registerSweepstakes = async (): Promise<string | null> => {
+  const registerSweepstakes = async (detailsOverride?: string): Promise<string | null> => {
+    console.log('X-RegisterSweepstakes START', {
+      entrants: entrants,
+      entrantsLength: entrants.length,
+      sweepstakesDetails: sweepstakesDetails,
+      detailsOverride: detailsOverride
+    });
+    
     if (!client) {
+      console.log('X-Error: Client not initialized');
       setError('Client not initialized or wallet not connected');
       return null;
     }
 
     if (entrants.length === 0) {
+      console.log('X-Error: No entrants to register');
       setError('No entrants to register');
       return null;
     }
@@ -650,41 +659,76 @@ export const SweepstakesProvider = ({ children, config }: SweepstakesProviderPro
     try {
       setIsLoading(true);
       
-      // Get details from the sweepstakesDetails state or use empty object
-      const details = sweepstakesDetails || '{}';
-      console.log('Registering sweepstakes with details:', details);
+      // Use passed details if provided, otherwise fall back to context state or empty object
+      let details = detailsOverride !== undefined ? detailsOverride : (sweepstakesDetails || '{}');
+      console.log('X-Entrants', JSON.stringify(entrants));
+      console.log('X-Details', details);
+      console.log('X-Using details from:', detailsOverride !== undefined ? 'direct parameter' : 'context state');
+      
+      // Validate that details is a valid JSON string
+      try {
+        JSON.parse(details);
+      } catch (e) {
+        console.error('X-Error: Invalid JSON details:', details);
+        console.log('X-Attempting to fix invalid JSON by using empty object');
+        details = '{}';
+      }
       
       // Call the modified registerSweepstakes with both entrants and details parameters
+      console.log('X-Calling client.registerSweepstakes with:', { entrants: entrants.length, details });
       const response = await client.registerSweepstakes(entrants, details);
+      console.log('X-Client response:', response);
 
       if (response === true) {
-        console.log('Sweepstakes registered successfully, waiting for confirmation...');
+        console.log('X-Success: Sweepstakes registered successfully');
         
         // Wait a moment for blockchain confirmation
         await new Promise(resolve => setTimeout(resolve, 1000));
         
         // Update our local lists to get the new ID
+        console.log('X-Loading all sweepstakes to get new ID');
         await loadAllSweepstakes();
         
         // Get the most recently added sweepstakes ID
         // This is a workaround since the modified function returns a boolean instead of an ID
+        console.log('X-Current allSweepstakesIds:', allSweepstakesIds);
         if (allSweepstakesIds.length > 0) {
           const newId = allSweepstakesIds[allSweepstakesIds.length - 1];
+          console.log('X-New sweepstakes ID identified:', newId);
           setCurrentSweepstakesId(newId);
           setIsLoading(false);
           return newId;
         } else {
+          console.log('X-Error: No sweepstakes IDs found after registration');
           setError('Sweepstakes registered but ID not found in updated list');
           setIsLoading(false);
           return null;
         }
       } else {
+        console.log('X-Error: Registration unsuccessful');
         setError('Failed to register sweepstakes - registration unsuccessful');
         setIsLoading(false);
         return null;
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to register sweepstakes');
+      console.error('X-Registration error:', err);
+      
+      // Check if this is a wallet rejection error
+      const errorStr = String(err);
+      if (errorStr.includes('TokenClient Error') || 
+          errorStr.includes('WriteReadAOClient Error') || 
+          errorStr.includes('User rejected') || 
+          errorStr.includes('Transaction rejected') ||
+          errorStr.includes('user denied') ||
+          errorStr.includes('User denied')) {
+        
+        console.log('X-Detected wallet transaction rejection');
+        setError('Transaction canceled: User rejected wallet request');
+      } else {
+        // General error handling
+        setError(err instanceof Error ? err.message : 'Failed to register sweepstakes');
+      }
+      
       setIsLoading(false);
       return null;
     }

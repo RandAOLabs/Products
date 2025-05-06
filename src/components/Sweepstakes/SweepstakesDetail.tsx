@@ -5,6 +5,66 @@ import { EntrantsForm } from './EntrantsForm/EntrantsForm';
 import { PullsHistory } from './PullsHistory';
 import './SweepstakesDetail.css';
 
+// Utility function to format dates for pull history with relative time
+const formatDate = (timestamp: number): string => {
+  const now = new Date();
+  const date = new Date(timestamp);
+  const diffMs = now.getTime() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+
+  // Show 'Just now' for timestamps less than 1 minute old
+  if (diffMin < 1) {
+    return 'Just now';
+  }
+  
+  // Show relative time (minutes/hours/days ago) for recent timestamps
+  if (diffMin < 60) {
+    return `${diffMin} ${diffMin === 1 ? 'minute' : 'minutes'} ago`;
+  }
+  
+  if (diffHour < 24) {
+    return `${diffHour} ${diffHour === 1 ? 'hour' : 'hours'} ago`;
+  }
+  
+  if (diffDay < 7) {
+    return `${diffDay} ${diffDay === 1 ? 'day' : 'days'} ago`;
+  }
+  
+  // Fall back to standard date format for older timestamps
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date);
+};
+
+// Collapsible component for the Update Entrants section
+const Collapsible = ({ title, children, defaultOpen = false }) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  
+  const toggleCollapsible = () => {
+    setIsOpen(!isOpen);
+  };
+  
+  return (
+    <div className="collapsible">
+      <div className="collapsible-header" onClick={toggleCollapsible}>
+        <h2>{title}</h2>
+        <span className={`collapsible-icon ${isOpen ? 'open' : ''}`}>▼</span>
+      </div>
+      <div className={`collapsible-content ${isOpen ? 'open' : ''}`}>
+        <div className="collapsible-inner">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const SweepstakesDetailContent = () => {
   const { 
     currentSweepstakesId, 
@@ -31,6 +91,11 @@ const SweepstakesDetailContent = () => {
   // Initialize with pulls from context
   const [pulls, setPulls] = useState(contextPulls);
   
+  // Local loading states to avoid full page reloads
+  const [isPullingWinner, setIsPullingWinner] = useState(false);
+  const [isAddingEntrant, setIsAddingEntrant] = useState(false);
+  const [isUpdatingEntrants, setIsUpdatingEntrants] = useState(false);
+  
   // Keep local pulls in sync with context pulls when they change
   useEffect(() => {
     if (contextPulls && contextPulls.length > 0) {
@@ -42,8 +107,19 @@ const SweepstakesDetailContent = () => {
   const [localError, setLocalError] = useState<string | null>(null);
   const [pullReward, setPullReward] = useState<string>('');
   const [pullRank, setPullRank] = useState<string>('');
+  const [rankError, setRankError] = useState<string>('');
   const [pullDescription, setPullDescription] = useState<string>('');
   const [isOwner, setIsOwner] = useState(false);
+  const [isLoadingEntrants, setIsLoadingEntrants] = useState(false);
+  const [isLoadingPulls, setIsLoadingPulls] = useState(false);
+  
+  // Loading states that track whether data is being refreshed
+  const [isRefreshingEntrants, setIsRefreshingEntrants] = useState(false);
+  const [isRefreshingPulls, setIsRefreshingPulls] = useState(false);
+  
+  // Cache for data to prevent UI flashing while loading
+  const [cachedEntrants, setCachedEntrants] = useState<string[]>([]);
+  const [cachedPulls, setCachedPulls] = useState<any[]>([]);
   const didInitialRefresh = useRef<boolean>(false); // Track if we've done the initial refresh
   // Progress bar state removed - using inline loading spinners for each pull instead
   
@@ -51,6 +127,19 @@ const SweepstakesDetailContent = () => {
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   // Track if we just did a pull to stop auto-refresh after one cycle
   const justPulledRef = useRef<boolean>(false);
+  
+  // Update caches when data loads
+  useEffect(() => {
+    if (entrants.length > 0) {
+      setCachedEntrants(entrants);
+    }
+  }, [entrants]);
+  
+  useEffect(() => {
+    if (pulls.length > 0) {
+      setCachedPulls(pulls);
+    }
+  }, [pulls]);
   
   // Function to seamlessly fetch the latest pull data without disrupting UI
   const fetchLatestPullData = useCallback(async () => {
@@ -291,57 +380,46 @@ const SweepstakesDetailContent = () => {
           
           return (
             <div key={`${pullId}-${index}`} className={pullItemClasses}>
+              {/* Rank Badge - Only shown if rank is present and valid */}
+              {parsedDetails?.rank && /^[1-5]$/.test(parsedDetails.rank) && (
+                <div className={`rank-badge rank-${parsedDetails.rank}`}>
+                  {parsedDetails.rank}
+                </div>
+              )}
+              
               <div className="pull-header">
-                {!pull.Winner || pull.Winner === '' || pull.Winner === 'Unknown' ? (
-                  <div className="pull-winner pending">
-                    <span className="loading-spinner"></span>
-                    <span className="loading-text">Selecting winner...</span>
-                  </div>
-                ) : (
-                  <div className={`pull-winner ${isTransitioning ? 'winner-transition' : ''}`}>
-                    {pull.Winner}
-                  </div>
-                )}
-                <div className="pull-id">Pull #{index + 1}</div>
+                <div className="pull-winner-container">
+                  {!pull.Winner || pull.Winner === '' || pull.Winner === 'Unknown' ? (
+                    <div className="pull-winner pending">
+                      <div className="spinner-small"></div>
+                      <span className="loading-text">Pulling winner...</span>
+                    </div>
+                  ) : (
+                    <div className={`pull-winner ${isTransitioning ? 'winner-transition' : ''}`}>
+                      {pull.Winner}
+                    </div>
+                  )}
+                </div>
               </div>
-              {/* Display available information from the pull */}
-              <div className="pull-details">
-                {parsedDetails ? (
-                  <div className="structured-pull-details">
-                    {parsedDetails.reward && (
-                      <div className="detail-item">
-                        <span className="detail-label">Reward:</span>
-                        <span className="detail-value">{parsedDetails.reward}</span>
-                      </div>
-                    )}
-                    {parsedDetails.rank !== undefined && (
-                      <div className="detail-item">
-                        <span className="detail-label">Rank:</span>
-                        <span className="detail-value">{parsedDetails.rank}</span>
-                      </div>
-                    )}
-                    {parsedDetails.description && (
-                      <div className="detail-item">
-                        <span className="detail-label">Description:</span>
-                        <span className="detail-value">{parsedDetails.description}</span>
-                      </div>
-                    )}
-                    {/* Show other fields that might exist but weren't in our standard form */}
-                    {Object.entries(parsedDetails)
-                      .filter(([key]) => !['reward', 'rank', 'description'].includes(key))
-                      .map(([key, value]) => (
-                        <div className="detail-item" key={key}>
-                          <span className="detail-label">{key.charAt(0).toUpperCase() + key.slice(1)}:</span>
-                          <span className="detail-value">
-                            {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                          </span>
-                        </div>
-                      ))}
-                  </div>
-                ) : (
-                  <div>Details: {pull.Details || 'No details available'}</div>
-                )}
-              </div>
+              
+              {/* Only show details section if there are details to show */}
+              {parsedDetails && (parsedDetails.reward || parsedDetails.description) && (
+                <div className="pull-details">
+                  {parsedDetails.reward && (
+                    <div className="pull-detail-item">
+                      <span className="pull-detail-label">Reward</span>
+                      <span className="pull-detail-value pull-reward">{parsedDetails.reward}</span>
+                    </div>
+                  )}
+                  
+                  {parsedDetails.description && (
+                    <div className="pull-detail-item">
+                      <span className="pull-detail-label">Info</span>
+                      <span className="pull-detail-value pull-description">{parsedDetails.description}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
@@ -457,11 +535,24 @@ const SweepstakesDetailContent = () => {
     }
     
     setLocalError(null);
+    setIsAddingEntrant(true); // Set local loading state
+    
     try {
-      await addEntrant(newEntrantText);
-      setNewEntrantText(''); // Clear the input after successful addition
+      // Track the current entrant being added for optimistic update
+      const entrantToAdd = newEntrantText.trim();
+      
+      // Optimistically update UI
+      const updatedEntrants = [...entrants, entrantToAdd];
+      
+      // Clear input early for better UX
+      setNewEntrantText('');
+      
+      // Make API call in background
+      await addEntrant(entrantToAdd);
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'Failed to add entrant');
+    } finally {
+      setIsAddingEntrant(false);
     }
   };
 
@@ -495,11 +586,18 @@ const SweepstakesDetailContent = () => {
     e.preventDefault(); // Prevent form submission and page refresh
     setLocalError(null);
     
+    // Validate rank is selected (required)
+    if (!pullRank) {
+      setRankError('Please select a rank (required)');
+      return;
+    }
+    
     // Record the button reference to avoid null errors when updating disabled state
     pullButtonRef.current = e.currentTarget;
     
-    // Disable the button and track that we're in the process of pulling
+    // Use both component-wide and local state trackers
     setIsPulling(true);
+    setIsPullingWinner(true); // Set local state for pull operation
     e.currentTarget.disabled = true;
     
     console.log('🎲 Pull Winner button clicked');
@@ -540,15 +638,15 @@ const SweepstakesDetailContent = () => {
       // Add optimistic pull to the UI immediately at the top
       setPulls(prevPulls => [optimisticPull, ...prevPulls]);
       
-      // Submit the pull request to the API
-      console.log('🔄 Calling pullWinner function with details:', detailsJson);
-      await pullWinner(detailsJson);
-      console.log('✅ Pull winner request sent successfully');
-      
-      // Clear form fields after successful pull
+      // Clear form fields immediately for better UX
       setPullReward('');
       setPullRank('');
       setPullDescription('');
+      
+      // Submit the pull request to the API in the background
+      console.log('🔄 Calling pullWinner function with details:', detailsJson);
+      await pullWinner(detailsJson);
+      console.log('✅ Pull winner request sent successfully');
       
       // Mark that we just did a pull so we can handle refresh state appropriately
       justPulledRef.current = true;
@@ -581,8 +679,9 @@ const SweepstakesDetailContent = () => {
       // Remove optimistic pull on error
       setPulls(prevPulls => prevPulls.filter(pull => !pull.isOptimistic));
     } finally {
-      // Always reset the pull state when done
+      // Always reset the pull states when done
       setIsPulling(false);
+      setIsPullingWinner(false);
       
       // Re-enable the button if it exists
       if (pullButtonRef.current) {
@@ -611,7 +710,8 @@ const SweepstakesDetailContent = () => {
     }
   };
 
-  if (isLoading) {
+  // Only show full page loading on initial load, not on updates
+  if (isLoading && (!sweepstakesData || Object.keys(sweepstakesData).length === 0)) {
     return <div className="loading-container">Loading sweepstakes...</div>;
   }
 
@@ -632,7 +732,25 @@ const SweepstakesDetailContent = () => {
   return (
     <div className="sweepstakes-detail">
       <div className="sweepstakes-detail-header">
-        <h1>Sweepstakes #{sweepstakesId}</h1>
+        <h1>
+          Sweepstakes: {parseDetails(sweepstakesData?.Details)?.name || 'Unnamed'}
+          <span 
+            className="id-badge" 
+            onClick={() => {
+              navigator.clipboard.writeText(sweepstakesId);
+              // Show a temporary tooltip
+              const badge = document.querySelector('.id-badge');
+              if (badge) {
+                badge.classList.add('copied');
+                setTimeout(() => badge.classList.remove('copied'), 2000);
+              }
+            }}
+            title="Click to copy ID"
+          >
+            #{sweepstakesId.substring(0, 8)}...
+            <span className="tooltip">Copied!</span>
+          </span>
+        </h1>
         <div className="controls-section">
           <Link to="/sweepstakes" className="back-button">
             ← Back to All Sweepstakes
@@ -640,197 +758,238 @@ const SweepstakesDetailContent = () => {
         </div>
       </div>
 
-      <div className="sweepstakes-info">
-        <div className="info-section">
-          <h2>Sweepstakes Info</h2>
-          <div className="detail-row">
-            <span className="label">ID:</span>
-            <span className="value">{currentSweepstakesId}</span>
-          </div>
-          <div className="detail-row">
-            <span className="label">Creator:</span>
-            <span className="value creator-address">{sweepstakesData?.Creator || 'Unknown'}</span>
-          </div>
-          <div className="detail-row">
-            <span className="label">Status:</span>
-            <span className={`value status ${isListLocked ? 'locked' : 'unlocked'}`}>
-              {isListLocked ? 'Locked' : 'Unlocked'}
-            </span>
-          </div>
-          <div className="detail-row">
-            <span className="label">Ownership:</span>
-            <span className={`value ownership ${isOwner ? 'owner' : 'visitor'}`}>
-              {isOwner ? 'You own this sweepstakes' : 'You are viewing someone else\'s sweepstakes'}
-            </span>
-          </div>
-          {sweepstakesData?.Details && (
-            <div className="details-section">
-              <h3>Details</h3>
-              {(() => {
-                const details = parseDetails(sweepstakesData?.Details);
-                if (!details) {
-                  // Fallback to raw JSON if cannot parse
-                  return <pre className="details-json">{formatJson(sweepstakesData?.Details)}</pre>;
-                }
-                
-                return (
-                  <div className="structured-details">
-                    {details.name && (
-                      <div className="detail-row">
-                        <span className="label">Name:</span>
-                        <span className="value highlight">{details.name}</span>
-                      </div>
-                    )}
-                    
-                    {details.description && (
-                      <div className="detail-row description">
-                        <span className="label">Description:</span>
-                        <div className="value description-text">{details.description}</div>
-                      </div>
-                    )}
-                    
-                    {details.prize && (
-                      <div className="detail-row">
-                        <span className="label">Prize:</span>
-                        <span className="value prize">{details.prize}</span>
-                      </div>
-                    )}
-                    
-                    {details.endDate && (
-                      <div className="detail-row">
-                        <span className="label">End Date:</span>
-                        <span className="value">{details.endDate}</span>
-                      </div>
-                    )}
-                    
-                    {details.rules && (
-                      <div className="detail-row rules">
-                        <span className="label">Rules:</span>
-                        <div className="value rules-text">{details.rules}</div>
-                      </div>
-                    )}
-                    
-                    {details.maxEntrants && (
-                      <div className="detail-row">
-                        <span className="label">Max Entrants:</span>
-                        <span className="value">{details.maxEntrants}</span>
-                      </div>
-                    )}
-                    
-                    {/* Show other fields that might exist but weren't in our form */}
-                    {Object.entries(details)
-                      .filter(([key]) => !['name', 'description', 'prize', 'endDate', 'rules', 'maxEntrants'].includes(key))
-                      .map(([key, value]) => (
-                        <div className="detail-row" key={key}>
-                          <span className="label">{key.charAt(0).toUpperCase() + key.slice(1)}:</span>
-                          <span className="value">
-                            {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                          </span>
-                        </div>
-                      ))}
-                  </div>
-                );
-              })()}
-            </div>
-          )}
-        </div>
-      </div>
+      {/* Sweepstakes info will be displayed in the left column below */}
       
       <div className="content-container">
+        {/* Left Column - Details and Pull a Winner */}
         <div className="left-column">
-          <div className="entrants-section">
-            <h2>Entrants</h2>
-            {isListLocked ? (
-              <div className="locked-notice">
-                This sweepstakes is locked and entrants cannot be modified.
-              </div>
-            ) : null}
+          {/* Sweepstakes Details Section (with proper styling) */}
+          <div className="details-section sweepstakes-info">
+            <h2>Sweepstakes Details</h2>
+            <div className="detail-row">
+              <span className="label">ID:</span>
+              <span className="value">
+                <span className="copy-id" onClick={() => {
+                  navigator.clipboard.writeText(currentSweepstakesId);
+                  const copyEl = document.querySelector('.copy-id');
+                  if (copyEl) {
+                    copyEl.classList.add('copied');
+                    setTimeout(() => copyEl.classList.remove('copied'), 2000);
+                  }
+                }}>
+                  {currentSweepstakesId}
+                  <span className="copy-tooltip">Click to copy</span>
+                </span>
+              </span>
+            </div>
+            <div className="detail-row">
+              <span className="label">Creator:</span>
+              <span className="value creator-address">{sweepstakesData?.Creator || 'Unknown'}</span>
+            </div>
+            <div className="detail-row">
+              <span className="label">Status:</span>
+              <span className="value">
+                <span className={`status ${isListLocked ? 'locked' : 'unlocked'}`}>
+                  {isListLocked ? 'Locked' : 'Unlocked'}
+                </span>
+              </span>
+            </div>
+            <div className="detail-row">
+              <span className="label">Ownership:</span>
+              <span className="value">
+                <span className={`ownership ${isOwner ? 'owner' : 'visitor'}`}>
+                  {isOwner ? 'Owner' : 'Visitor'}
+                </span>
+              </span>
+            </div>
+            <div className="detail-row">
+              <span className="label">Stats:</span>
+              <span className="value">
+                <span className="stat-value">{entrants?.length || 0} Entrants</span>
+                <span className="separator">•</span>
+                <span className="stat-value">{pulls?.length || 0} Pulls</span>
+              </span>
+            </div>
             
-            {/* Replace the existing entrants form with our enhanced EntrantsForm */}
-            {isOwner && !isListLocked ? (
-              <EntrantsForm 
-                mode="update"
-                title="Update Entrants"
-                buttonText="Update Entrants List"
-              />
-            ) : (
-              <div className="entrants-list">
-                {entrants.length === 0 ? (
-                  <div className="no-entrants">No entrants available</div>
-                ) : (
-                  <div className="entrants-container">
+            {/* Parsed details display */}
+            {sweepstakesData?.Details && parseDetails(sweepstakesData.Details) && (
+              <div className="detail-row">
+                <span className="label">About:</span>
+                <span className="value">
+                  {parseDetails(sweepstakesData.Details)?.description || 'No description available'}
+                </span>
+              </div>
+            )}
+            
+            {/* Entrants compact list */}
+            {entrants && entrants.length > 0 && (
+              <div className="detail-row">
+                <span className="label">Entrants:</span>
+                <div className="value">
+                  <div className="compact-entrants">
                     {entrants.map((entrant, index) => (
-                      <span key={index} className="entrant-item">{entrant}</span>
+                      <span key={index} className="compact-entrant" title={entrant}>
+                        {entrant}
+                      </span>
                     ))}
                   </div>
-                )}
+                </div>
               </div>
             )}
           </div>
           
-          {isOwner && !isListLocked && (
+          {/* Pull a Winner Section */}
+          {isOwner && !isListLocked && entrants && entrants.length > 0 && (
             <div className="pull-section">
-              <h2>Pull a Winner</h2>
-              <form className="structured-form" onSubmit={(e) => e.preventDefault()}>
-                <div className="form-group">
-                  <label htmlFor="pullReward">Reward (optional):</label>
-                  <input
-                    id="pullReward"
-                    type="text"
-                    value={pullReward}
-                    onChange={handlePullRewardChange}
-                    placeholder="e.g. $100 Gift Card"
-                    className="form-input"
-                  />
-                </div>
-                
-                <div className="form-group">
-                  <label htmlFor="pullRank">Rank (optional):</label>
-                  <input
-                    id="pullRank"
-                    type="text"
-                    value={pullRank}
-                    onChange={handlePullRankChange}
-                    placeholder="e.g. 1 (for 1st place)"
-                    className="form-input"
-                  />
-                  <div className="help-text">
-                    <small>Enter a number value (e.g. 1 for 1st place)</small>
-                  </div>
-                </div>
-                
-                <div className="form-group">
-                  <label htmlFor="pullDescription">Description (optional):</label>
-                  <textarea
-                    id="pullDescription"
-                    value={pullDescription}
-                    onChange={handlePullDescriptionChange}
-                    placeholder="e.g. First Place Prize"
-                    className="form-input"
-                    rows={2}
-                  />
-                </div>
-                
+              <div className="pull-section-header">
+                <h2>Pull a Winner</h2>
                 <button 
                   type="button" 
+                  className="pull-button" 
                   onClick={handlePullWinner}
-                  disabled={isLoading}
-                  className="pull-button"
+                  disabled={isPullingWinner}
                 >
-                  Pull Winner
+                  {isPullingWinner ? 'Pulling...' : 'Pull Now'}
+                  {isPullingWinner && <span className="spinner-inline"></span>}
                 </button>
+              </div>
+              
+              <form className="pull-form" onSubmit={(e) => e.preventDefault()}>
+                {/* Rank selection - first element under the header */}
+                <div className="rank-selection">
+                  <div className="rank-selection-label">
+                    Select Rank <span className="required">*</span>
+                  </div>
+                  
+                  <div className="rank-options">
+                    {[1, 2, 3, 4, 5].map((rank) => (
+                      <label key={rank} className="rank-option">
+                        <input
+                          type="radio"
+                          name="pullRank"
+                          value={rank}
+                          checked={pullRank === rank.toString()}
+                          onChange={handlePullRankChange}
+                          className="rank-radio"
+                        />
+                        <div className="rank-bubble">{rank}</div>
+                      </label>
+                    ))}
+                  </div>
+                  
+                  <div className="rank-options-labels">
+                    <span>Gold</span>
+                    <span>Silver</span>
+                    <span>Bronze</span>
+                    <span>4th</span>
+                    <span>5th</span>
+                  </div>
+                  
+                  <div className="rank-validation">{rankError}</div>
+                </div>
+
+                {/* Reward and Description side by side */}
+                <div className="reward-description-row">
+                  {/* Reward field */}
+                  <div className="form-group">
+                    <label htmlFor="pullReward">Reward (optional)</label>
+                    <input
+                      id="pullReward"
+                      type="text"
+                      value={pullReward}
+                      onChange={handlePullRewardChange}
+                      className="form-input"
+                      placeholder="e.g. $50 Gift Card"
+                    />
+                  </div>
+
+                  {/* Description field */}
+                  <div className="form-group">
+                    <label htmlFor="pullDescription">Description (optional)</label>
+                    <input
+                      id="pullDescription"
+                      type="text"
+                      value={pullDescription}
+                      onChange={handlePullDescriptionChange}
+                      className="form-input"
+                      placeholder="Additional info about this pull"
+                    />
+                  </div>
+                </div>
               </form>
+              
+              {localError && <div className="error-message">{localError}</div>}
+            </div>
+          )}
+          
+          {/* Non-owner view of entrants list */}
+          {(!isOwner || isListLocked) && (
+            <div className="entrants-section">
+              <h2>Entrants List {isListLocked && '(Locked)'}</h2>
+              {isLoadingEntrants ? (
+                <div className="loading-spinner"><div></div><div></div><div></div><div></div></div>
+              ) : (
+                <>
+                  <div className="entrants-count">
+                    Total entries: {(isRefreshingEntrants ? cachedEntrants : entrants).length}
+                  </div>
+                  {(isRefreshingEntrants ? cachedEntrants : entrants).length > 0 ? (
+                    <div className="entrants-list">
+                      <div className="entrants-container">
+                        {(isRefreshingEntrants ? cachedEntrants : entrants).map((entrant, index) => (
+                          <span key={index} className="entrant-item">{entrant}</span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="no-entrants">No entrants available</div>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>
         
+        {/* Right Column - Update Entrants and Pull History */}
         <div className="right-column">
+          {/* Update Entrants Form for owners - only show if there are ZERO pulls in history */}
+          {isOwner && !isListLocked && pulls.length === 0 && (
+            <Collapsible title="Update Entrants" defaultOpen={false}>
+              <EntrantsForm 
+                mode="update"
+                initialEntrants={isRefreshingEntrants ? cachedEntrants : entrants} 
+                onEntrantsChange={(newEntrants) => {
+                  // For consistency with create form but we don't need to update
+                  // the context immediately - it will happen on submit
+                  console.log('Entrants changed in form:', newEntrants.length);
+                }}
+                title=""
+                buttonText="Update Entrants List"
+              />
+            </Collapsible>
+          )}
+
+          {/* Locked message for owners */}
+          {isOwner && isListLocked && (
+            <div className="locked-message">
+              <p>
+                <span className="warning-icon">⚠️</span> 
+                Entrants list is locked because winners have been pulled
+              </p>
+            </div>
+          )}
+          
+          {/* Pull History Section */}
           <div className="pulls-history-section">
             <h2>Pull History</h2>
-            {/* Progress bar removed - now using inline spinner for each pending pull */}
-            
-            {/* Render the memoized pulls display content */}
-            {pullsDisplayContent}
+            {isLoadingPulls ? (
+              <div className="loading-spinner"><div></div><div></div><div></div><div></div></div>
+            ) : (
+              <div className="pulls-container">
+                {/* Use the cached pulls during refresh to prevent UI flashing */}
+                {pullsDisplayContent}
+              </div>
+            )}
           </div>
         </div>
       </div>

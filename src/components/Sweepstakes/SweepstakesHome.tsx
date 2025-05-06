@@ -28,6 +28,14 @@ const SweepstakesHomeContent = () => {
   const [sweepstakesIdInput, setSweepstakesIdInput] = useState('');
   const [isJsonValid, setIsJsonValid] = useState(true);
   const [showMalformedSweepstakes, setShowMalformedSweepstakes] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [creationSuccess, setCreationSuccess] = useState(false);
+  
+  // Form validation state
+  const [invalidFields, setInvalidFields] = useState<{
+    name: boolean;
+    description: boolean;
+  }>({ name: false, description: false });
   
   // States for storing sweepstakes details and validity
   const [sweepstakesCache, setSweepstakesCache] = useState<{
@@ -168,21 +176,50 @@ const SweepstakesHomeContent = () => {
 
   // Create a new sweepstakes
   const handleCreateSweepstakes = async () => {
+    // Reset any previous validation errors
+    setInvalidFields({ name: false, description: false });
+    setLocalError(null);
+    setCreationSuccess(false);
+    
+    // Log current state at the beginning
+    console.log('X-CreateSweepstakes START', {
+      formData: sweepstakesForm,
+      entrants: entrants,
+      entrantsLength: entrants.length
+    });
+
+    // Track validation status
+    let isValid = true;
+
     if (entrants.length === 0) {
+      console.log('X-Error: No entrants');
       setLocalError('Please add at least one entrant');
+      isValid = false;
       return;
     }
     
-    // Validate required fields
+    // Validate required fields and highlight invalid ones
     if (!sweepstakesForm.name.trim()) {
+      console.log('X-Error: No name');
+      setInvalidFields(prev => ({ ...prev, name: true }));
       setLocalError('Name is required');
-      return;
+      isValid = false;
     }
     
     if (!sweepstakesForm.description.trim()) {
-      setLocalError('Description is required');
+      console.log('X-Error: No description');
+      setInvalidFields(prev => ({ ...prev, description: true }));
+      setLocalError(localError || 'Description is required');
+      isValid = false;
+    }
+    
+    // Exit if validation failed
+    if (!isValid) {
       return;
     }
+    
+    // Set loading state during registration
+    setIsCreating(true);
     
     // Prepare the details as a JSON string
     const details = JSON.stringify({
@@ -193,18 +230,71 @@ const SweepstakesHomeContent = () => {
       rules: sweepstakesForm.rules
     });
     
-    // Update the sweepstakesDetails in the context
+    console.log('X-Details prepared:', details);
+    
+    // Update the sweepstakesDetails in the context for future reference
+    // but don't rely on this update for the immediate registration
     setSweepstakesDetails(details);
     
+    // Log the current values before registration
+    console.log('X-Before registration', {
+      currentContextDetails: sweepstakesDetails, // This will be stale
+      newDetails: details, // This is what we're going to pass directly
+      entrants: entrants
+    });
+    
     try {
-      const sweepstakesId = await registerSweepstakes();
+      // Pass the details directly to avoid timing issues with context updates
+      console.log('X-Calling registerSweepstakes with direct details parameter');
+      const sweepstakesId = await registerSweepstakes(details);
+      console.log('X-Registration result:', { sweepstakesId });
+      
       if (sweepstakesId) {
-        navigate(`/sweepstakes/${sweepstakesId}`);
+        console.log('X-Success: Created sweepstakes with ID', sweepstakesId);
+        
+        // Clear form and scroll to top
+        setSweepstakesForm({
+          name: '',
+          description: '',
+          prize: '',
+          endDate: '',
+          rules: ''
+        });
+        setEntrants([]);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        
+        // Show success message
+        setLocalError(null);
+        setCreationSuccess(true);
+        
+        // Reload all sweepstakes data in the background
+        const reloadData = async () => {
+          try {
+            console.log('X-Reloading sweepstakes data...');
+            await loadAllSweepstakes();
+            
+            // After data is loaded, disable the creating state to complete the UI transition
+            // This prevents UI flickering during state transitions
+            setTimeout(() => {
+              console.log('X-Sweepstakes data reloaded and filtered');
+              setIsCreating(false);
+            }, 500); // Small delay to ensure filter processing is complete
+          } catch (error) {
+            console.error('X-Error reloading sweepstakes:', error);
+            setIsCreating(false);
+          }
+        };
+        
+        reloadData();
       } else {
+        console.log('X-Error: Registration failed');
         setLocalError('Failed to create sweepstakes. Please try again.');
+        setIsCreating(false);
       }
     } catch (err) {
+      console.error('X-Error:', err);
       setLocalError(err instanceof Error ? err.message : 'Failed to create sweepstakes');
+      setIsCreating(false);
     }
   };
 
@@ -375,73 +465,101 @@ const SweepstakesHomeContent = () => {
           </div>
         ) : (
           <div className="create-container">
-            {/* Use the EntrantsForm component for entrants input */}
-            <EntrantsForm 
-              mode="create"
-              onEntrantsChange={handleEntrantsChange}
-              onSubmit={handleCreateSweepstakes}
-              title="Entrants List"
-              buttonText="Create Sweepstakes"
-            />
-            
-            <div className="form-group">
-              <label>Sweepstakes Details:</label>
-              <div className="form-fields">
-                <div className="form-field required-field">
-                  <label>Name:</label>
-                  <input 
-                    type="text" 
-                    name="name" 
-                    value={sweepstakesForm.name} 
-                    onChange={handleFormChange} 
-                    className="form-input"
-                    placeholder="Enter sweepstakes name"
-                    required
-                  />
-                </div>
-                <div className="form-field required-field">
-                  <label>Description:</label>
-                  <textarea 
-                    name="description" 
-                    value={sweepstakesForm.description} 
-                    onChange={handleFormChange} 
-                    className="form-input"
-                    rows={4}
-                    placeholder="Describe your sweepstakes"
-                    required
-                  />
-                </div>
-                <div className="form-field">
-                  <label>Prize:</label>
-                  <input 
-                    type="text" 
-                    name="prize" 
-                    value={sweepstakesForm.prize} 
-                    onChange={handleFormChange} 
-                    className="form-input"
-                    placeholder="What's the prize? (optional)"
-                  />
-                </div>
-                <div className="form-field">
-                  <label>End Date:</label>
-                  <input 
-                    type="date" 
-                    name="endDate" 
-                    value={sweepstakesForm.endDate} 
-                    onChange={handleFormChange} 
-                    className="form-input"
-                  />
-                </div>
-                <div className="form-field">
-                  <label>Rules:</label>
-                  <textarea 
-                    name="rules" 
-                    value={sweepstakesForm.rules} 
-                    onChange={handleFormChange} 
-                    className="form-input"
-                    rows={3}
-                    placeholder="Rules for the sweepstakes (optional)"
-                  />
+            <div className="create-form-layout">
+              {/* Left side: EntrantsForm component */}
+              <div className="entrants-form-container">
+                <EntrantsForm 
+                  mode="create"
+                  onEntrantsChange={handleEntrantsChange}
+                  onSubmit={handleCreateSweepstakes}
+                  title="Entrants List"
+                  buttonText={isCreating ? "Creating..." : "Create Sweepstakes"}
+                  disabled={isCreating}
+                />
+              </div>
+              
+              {/* Right side: Sweepstakes Details */}
+              <div className="details-form-container">
+                <div className="form-group">
+                  <h3 className="form-section-title">Sweepstakes Details:</h3>
+                  <div className="form-fields">
+                    <div className="form-field required-field">
+                      <label>Name:</label>
+                      <input 
+                        type="text" 
+                        name="name" 
+                        value={sweepstakesForm.name} 
+                        onChange={(e) => {
+                          handleFormChange(e);
+                          // Clear validation error when user types
+                          if (invalidFields.name && e.target.value.trim()) {
+                            setInvalidFields(prev => ({ ...prev, name: false }));
+                            if (localError === 'Name is required') {
+                              setLocalError(null);
+                            }
+                          }
+                        }} 
+                        className={`form-input ${invalidFields.name ? 'field-invalid' : ''}`}
+                        placeholder="Enter sweepstakes name"
+                        required
+                      />
+                      {invalidFields.name && <div className="field-error">Name is required</div>}
+                    </div>
+                    <div className="form-field required-field">
+                      <label>Description:</label>
+                      <textarea 
+                        name="description" 
+                        value={sweepstakesForm.description} 
+                        onChange={(e) => {
+                          handleFormChange(e);
+                          // Clear validation error when user types
+                          if (invalidFields.description && e.target.value.trim()) {
+                            setInvalidFields(prev => ({ ...prev, description: false }));
+                            if (localError === 'Description is required') {
+                              setLocalError(null);
+                            }
+                          }
+                        }}
+                        className={`form-input ${invalidFields.description ? 'field-invalid' : ''}`}
+                        rows={4}
+                        placeholder="Describe your sweepstakes"
+                        required
+                      />
+                      {invalidFields.description && <div className="field-error">Description is required</div>}
+                    </div>
+                    <div className="form-field">
+                      <label>Prize:</label>
+                      <input 
+                        type="text" 
+                        name="prize" 
+                        value={sweepstakesForm.prize} 
+                        onChange={handleFormChange} 
+                        className="form-input"
+                        placeholder="What's the prize? (optional)"
+                      />
+                    </div>
+                    <div className="form-field">
+                      <label>End Date:</label>
+                      <input 
+                        type="date" 
+                        name="endDate" 
+                        value={sweepstakesForm.endDate} 
+                        onChange={handleFormChange} 
+                        className="form-input"
+                      />
+                    </div>
+                    <div className="form-field">
+                      <label>Rules:</label>
+                      <textarea 
+                        name="rules" 
+                        value={sweepstakesForm.rules} 
+                        onChange={handleFormChange} 
+                        className="form-input"
+                        rows={3}
+                        placeholder="Rules for the sweepstakes (optional)"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

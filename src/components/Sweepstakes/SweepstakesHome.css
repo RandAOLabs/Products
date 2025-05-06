@@ -284,12 +284,32 @@
 }
 
 .error-message {
-  padding: 1rem;
-  background-color: var(--error-bg);
-  color: var(--error-text);
+  color: var(--error-color);
+  background-color: rgba(var(--error-rgb), 0.1);
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
   border-radius: 4px;
-  margin-bottom: 1rem;
-  border: 1px solid var(--error-border);
+  border-left: 4px solid var(--error-color);
+}
+
+/* Form validation styles */
+.field-invalid {
+  border: 2px solid var(--error-color) !important;
+  background-color: rgba(var(--error-rgb), 0.05) !important;
+  animation: pulse-error 1s ease-in-out;
+}
+
+.field-error {
+  color: var(--error-color);
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+  font-weight: 500;
+}
+
+@keyframes pulse-error {
+  0% { box-shadow: 0 0 0 0 rgba(var(--error-rgb), 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(var(--error-rgb), 0); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--error-rgb), 0); }
 }
 
 /* Form styling */
@@ -398,4 +418,47 @@
   .sweepstakes-grid {
     grid-template-columns: 1fr;
   }
+  
+  .form-fields {
+    grid-template-columns: 1fr;
+  }
+  
+  .form-field:nth-child(n) {
+    grid-column: 1;
+  }
+}
+
+/* Create form responsive layout */
+.create-form-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* On wider screens, place entrants form and details side by side */
+@media (min-width: 1024px) {
+  .create-form-layout {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+  
+  .entrants-form-container {
+    flex: 1;
+    max-width: 40%;
+  }
+  
+  .details-form-container {
+    flex: 1;
+    margin-left: 1.5rem;
+  }
+}
+
+/* Form section title */
+.form-section-title {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  font-size: 1.25rem;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-light);
+  padding-bottom: 0.5rem;
 }
