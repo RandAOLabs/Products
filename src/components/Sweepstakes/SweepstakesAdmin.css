@@ -1,0 +1,199 @@
+.admin-page {
+  padding: 2rem;
+  max-width: 90%;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.admin-header {
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.admin-header h1 {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
+.admin-header .description {
+  font-size: 1.2rem;
+  color: var(--text-secondary);
+}
+
+.admin-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+}
+
+.delete-button {
+  padding: 0.75rem 1.5rem;
+  background-color: var(--accent-danger);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.delete-button:hover:not(:disabled) {
+  background-color: var(--accent-danger-hover);
+  transform: translateY(-2px);
+}
+
+.delete-button:disabled {
+  background-color: var(--disabled-bg);
+  color: var(--disabled-text);
+  cursor: not-allowed;
+}
+
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.75rem 1.5rem;
+  background-color: var(--surface-alt-color);
+  color: var(--text-primary);
+  border-radius: 4px;
+  text-decoration: none;
+  font-weight: 500;
+  transition: background-color 0.2s;
+  border: 1px solid var(--border-color);
+}
+
+.back-button:hover {
+  background-color: var(--border-color);
+}
+
+.admin-content {
+  background-color: var(--surface-color);
+  border-radius: 8px;
+  padding: 2rem;
+  box-shadow: var(--card-shadow);
+}
+
+.admin-content h2 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  font-size: 1.75rem;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-light);
+  padding-bottom: 0.5rem;
+}
+
+.sweepstakes-list {
+  margin-top: 1rem;
+}
+
+.sweepstakes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.error-message {
+  background-color: var(--error-bg);
+  color: var(--error-text);
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  border: 1px solid var(--error-border);
+}
+
+.success-message {
+  background-color: var(--accent-success-bg);
+  color: var(--accent-success);
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  border: 1px solid var(--accent-success-border);
+}
+
+.loading {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-secondary);
+  font-size: 1.2rem;
+}
+
+.no-sweepstakes {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-secondary);
+  background-color: var(--surface-alt-color);
+  border-radius: 8px;
+}
+
+/* Selectable card styles */
+.selectable-card-container {
+  position: relative;
+  cursor: pointer;
+}
+
+.selection-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0);
+  transition: background-color 0.2s ease;
+  z-index: 1;
+  border-radius: 8px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 8px;
+}
+
+.selection-overlay:hover {
+  background-color: rgba(var(--accent-primary-rgb), 0.1);
+}
+
+.selection-overlay.selected {
+  background-color: rgba(var(--accent-primary-rgb), 0.15);
+  border: 2px solid var(--accent-primary);
+}
+
+.selection-checkbox {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: var(--surface-color);
+  border: 2px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.selection-overlay.selected .selection-checkbox {
+  background-color: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.checkmark {
+  color: white;
+  font-size: 0.9rem;
+  font-weight: bold;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .admin-page {
+    padding: 1rem;
+  }
+  
+  .admin-actions {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .delete-button,
+  .back-button {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+  }
+}
