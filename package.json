@@ -12,7 +12,7 @@
     "deploy-undername": "npm run build && permaweb-deploy --deploy-folder ./dist --ant-process $DEPLOY_ANT_PROCESS_ID --undername $DEPLOY_UNDERNAME"
   },
   "dependencies": {
-    "ao-process-clients": "6.0.46",
+    "ao-process-clients": "6.0.51",
     "permaweb-deploy": "1.1.10",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

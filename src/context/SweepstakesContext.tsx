@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { SweepstakesClient, SweepstakesClientConfig } from 'ao-process-clients';
+import { SweepstakesClient, SweepstakesClientConfig, PROCESS_IDS } from 'ao-process-clients';
 import { useWallet } from './WalletContext';
 
 // Define our own SweepstakesPull interface to match the actual API data structure
@@ -109,10 +109,9 @@ export const useSweepstakes = () => useContext(SweepstakesContext);
 // Context provider component
 interface SweepstakesProviderProps {
   children: ReactNode;
-  config?: SweepstakesClientConfig;
 }
 
-export const SweepstakesProvider = ({ children, config }: SweepstakesProviderProps) => {
+export const SweepstakesProvider = ({ children }: SweepstakesProviderProps) => {
   const { address, isConnected } = useWallet();
   
   const [client, setClient] = useState<SweepstakesClient | null>(null);
@@ -187,14 +186,13 @@ export const SweepstakesProvider = ({ children, config }: SweepstakesProviderPro
         console.log('Setting user ID from wallet address:', address);
         setUserId(address);
         
-        // If config is provided, use it; otherwise, use auto-configuration
-        // Note: We're restoring the original approach that was working
-        console.log('Initializing SweepstakesClient with original method');
+        // Using the default builder approach for SweepstakesClient initialization
+        console.log('Initializing SweepstakesClient with default builder');
         
-        // If config is provided, use it; otherwise, use auto-configuration
-        const sweepstakesClient = config 
-          ? new SweepstakesClient(config)
-          : await SweepstakesClient.autoConfiguration();
+        const sweepstakesClient = await (await SweepstakesClient.defaultBuilder())
+          // .withAOConfig(mainConfig)
+          // .withToken(PROCESS_IDS.MISCELLANEOUS.SWEEPSTAKES_TOKEN, tokenConfig as any)
+          .build()
         
         // Set client
         setClient(sweepstakesClient);
@@ -221,7 +219,7 @@ export const SweepstakesProvider = ({ children, config }: SweepstakesProviderPro
     };
 
     initClient();
-  }, [config, isConnected, address]);
+  }, [isConnected, address]);
 
   // Add an effect to keep userId in sync with wallet address
   useEffect(() => {
